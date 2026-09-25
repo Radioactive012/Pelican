@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+import json
+import os
+import sys
+
+import httpx
+from google import genai
+from pymongo import MongoClient
+
+from settings import load_settings
+
+
+def check() -> dict[str, dict[str, object]]:
+    settings = load_settings()
+    result: dict[str, dict[str, object]] = {}
+
+    try:
+        client = MongoClient(settings.mongodb_uri, serverSelectionTimeoutMS=10_000)
+        client.admin.command("ping")
+        result["mongodb_atlas"] = {"ok": True}
+    except Exception as exc:
+        result["mongodb_atlas"] = {"ok": False, "error": type(exc).__name__}
+
+    try:
+        response = genai.Client(api_key=settings.gemini_api_key).models.embed_content(
+            model=settings.gemini_embedding_model,
+            contents="Context Passport connectivity check",
+        )
+        result["gemini"] = {"ok": bool(response.embeddings)}
+    except Exception as exc:
+        result["gemini"] = {"ok": False, "error": type(exc).__name__}
+
+    supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    supabase_key = os.getenv("SUPABASE_ANON_KEY", "")
+    if supabase_url and supabase_key:
+        try:
+            response = httpx.get(
+                f"{supabase_url}/auth/v1/health",
+                headers={"apikey": supabase_key},
+                timeout=10,
+            )
+            result["supabase"] = {"ok": response.is_success, "status": response.status_code}
+        except Exception as exc:
+            result["supabase"] = {"ok": False, "error": type(exc).__name__}
+    else:
+        result["supabase"] = {"ok": False, "error": "not_configured"}
+
+    render_url = os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
+    if render_url:
+        try:
+            response = httpx.get(f"{render_url}/health", timeout=15, follow_redirects=True)
+            result["render"] = {"ok": response.is_success, "status": response.status_code}
+        except Exception as exc:
+            result["render"] = {"ok": False, "error": type(exc).__name__}
+    else:
+        result["render"] = {"ok": False, "error": "not_configured"}
+
+    return result
+
+
+if __name__ == "__main__":
+    try:
+        checks = check()
+    except RuntimeError as exc:
+        print(json.dumps({"configuration": {"ok": False, "error": str(exc)}}, indent=2))
+        raise SystemExit(1) from exc
+    print(json.dumps(checks, indent=2))
+    sys.exit(0 if all(item["ok"] for item in checks.values()) else 1)

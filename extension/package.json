@@ -1,0 +1,9 @@
+{
+  "name": "extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Context Passport Browser Extension scaffold (V0)",
+  "scripts": {
+    "build": "echo \"Extension scaffold build placeholder\""
+  }
+}

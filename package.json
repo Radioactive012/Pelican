@@ -1,0 +1,19 @@
+{
+  "name": "context-passport",
+  "version": "0.1.0",
+  "description": "Context Passport: cross-assistant persistent memory and context firewall",
+  "private": true,
+  "workspaces": [
+    "dashboard",
+    "extension"
+  ],
+  "scripts": {
+    "test": "PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests",
+    "start": "PYTHONPATH=backend backend/.venv/bin/python backend/server.py",
+    "gate:audit": "PYTHONPATH=backend backend/.venv/bin/python backend/inspect_mem0.py",
+    "gate:index": "PYTHONPATH=backend backend/.venv/bin/python backend/verify_atlas_index.py --wait 300",
+    "gate:memory": "PYTHONPATH=backend backend/.venv/bin/python backend/test_isolation.py",
+    "gate:mcp": "PYTHONPATH=backend backend/.venv/bin/python backend/verify_mcp.py"
+  },
+  "devDependencies": {}
+}
