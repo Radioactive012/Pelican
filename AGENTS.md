@@ -14,8 +14,13 @@
 Context Passport is a **self-improving, privacy-first browser memory** product.
 
 - **One compact extension UI**: Works natively on **ChatGPT (`chatgpt.com`)**, **Claude (`claude.ai`)**, and **Gemini web (`gemini.google.com`)**. Contains a compact side-panel vault and settings. Includes a universal side-panel copy/paste fallback route if a site changes its DOM.
-- **One backend**: FastAPI with Mem0 OSS, verified Gemini Flash extraction model (`gemini-2.5-flash`), Gemini embedding model (`models/gemini-embedding-001` with 1536 dims), MongoDB Atlas, and Supabase Auth.
-- **One application database**: **MongoDB Atlas stores both Mem0 vector memories and app-control collections** (`observations`, `preferences`, `dedup_events`). Supabase supplies **sign-in only** (JWT issuance/validation), eliminating dual-database coordination.
+- **One backend**: FastAPI bound strictly to `127.0.0.1:8000` (`http://localhost:8000`) on this local machine. No Render or public cloud backend hosting in this plan.
+- **Model routing (provisional plan & transition)**:
+  - *Current baseline code*: Directly wired to Gemini extraction (`gemini-2.5-flash`) and Gemini embeddings (`models/gemini-embedding-001`, 1536 dims), requiring `GEMINI_PAID_TIER_CONFIRMED`.
+  - *Target provider-aware abstraction*: Provisional primary extractor is OpenRouter GLM 5.3 Flash (`openrouter/glm-5.3-flash`); candidate fallback is Gemini 2.5 Flash Lite via OpenRouter (`google/gemini-2.5-flash-lite`); provisional 1536-dimensional embedder is `openai/text-embedding-3-small` via OpenRouter.
+  - *Validation pass*: Jev from TypeSafe AI gets a feature-flagged, selective second-pass path, subject to verified API behavior, quality, and pricing.
+  - *Benchmarking*: Benchmarking (Step 10) will be conducted before finalizing model selection. Real keys are entered only at Step 10; Steps 1–9 use mocks and synthetic data only.
+- **One application database**: **MongoDB Atlas stores both Mem0 vector memories and app-control collections** (`observations`, `preferences`, `dedup_events`, `forgotten_preferences`, `forgotten_memory_sources`). Supabase supplies **sign-in only** (JWT issuance/validation), eliminating dual-database coordination.
 - **One narrow learning behavior**: Automatically learns **how the user likes answers explained**. Promotes an explanation-style preference only after **three distinct user-authored observations across at least two conversations**. User corrections lock the wording and take priority over later automatic guesses.
 - **Privacy Firewall**: Memories are classified as:
   - `general`: eligible for automatic use when relevant (up to 3 general memories selected automatically by the backend).
@@ -27,6 +32,7 @@ Context Passport is a **self-improving, privacy-first browser memory** product.
 - No MCP servers or MCP client adapters.
 - No Cursor or coding-assistant extensions.
 - No additional native websites beyond ChatGPT, Claude, and Gemini web.
+- No public cloud hosting (Render, etc.) for the backend; local loopback execution only.
 
 ---
 
@@ -42,92 +48,39 @@ Context Passport is a **self-improving, privacy-first browser memory** product.
 
 ---
 
-## 3. Three-Version Plan & Verification Gates
+## 3. Acceptance Checklist & Verification Gates
 
-### Version 1 — Working Memory and Learning Brain (Hours 0–6) — [IMPLEMENTED]
-
-Build the FastAPI backend, MongoDB Atlas integration, Mem0 OSS tenant-scoped adapter, Gemini Flash extractor, Gemini embeddings, and Supabase Auth JWT verification.
-
-#### Requirements:
-- Backend accepts only authenticated, user-authored messages via Bearer token (Supabase Auth).
-- Deduplication store (`dedup_events`) rejects duplicate events idempotently.
-- Secret screener detects recognizable credentials and skips them.
-- Mem0 + Gemini extracts durable facts and stores them in MongoDB with 1536-dimensional embeddings.
-- Custom scoped MongoDB vector search enforces pre-filtered tenant isolation (`payload.user_id`).
-- Narrow learning extractor records explanation-style evidence. Promotes an explanation preference **only after 3 distinct observations across at least 2 conversations**.
-- 1 observation, or multiple observations in a single conversation, must NOT promote a preference.
-- Memories classified as `general`, `sensitive/uncertain`, or `secret`.
-
-#### Version 1 Passes When:
-1. Manually supplied test messages create a searchable fact.
-2. Differently worded search finds the fact.
-3. Three observations across two chats create one evidence-backed preference.
-4. One observation does not create a preference.
-5. A fake credential is completely skipped.
-6. Two accounts cannot see each other's memories.
+| Step | Scope | Gate / Test Description | Status |
+|---|---|---|---|
+| Step 1 | Baseline & Documentation | Working branch, audit baseline, update docs, run existing suites | In Progress |
+| Step 2 | Provider Interfaces & Mocks | Server-side extraction/embedder interfaces, mock providers, fail-closed handling, token counters | Pending |
+| Step 3 | Embeddings & Safe Migration | 1536-dim `text-embedding-3-small`, model tagging, vector migration tool, tenant scoping | Pending |
+| Step 4 | Ingest, Privacy & Preferences | Provider integration with safe retry state machine, secret screener, 3-obs/2-chat engine | Pending |
+| Step 5 | Three-Site Capture | ChatGPT, Claude, Gemini adapters; DOM fixtures; single-turn capture; no assistant/history | Pending |
+| Step 6 | Recall, Consent & Injection | Use Memory, up-to-3 general, sensitive consent modal, composer replacement, fallback UI | Pending |
+| Step 7 | Vault Controls & Lifecycle | Card rendering, locked preference corrections, evidence removal, block/forget lifecycles | Pending |
+| Step 8 | Local Runtime & Reliability | `127.0.0.1:8000` loopback, token expiry, rate limits, restart survival, no public binding | Pending |
+| Step 9 | UX, Packaging & Written Setup | Extension packaging in `v3/dist`, clear empty/error states, reproducible setup documentation | Pending |
+| Step 10 | Connect Models & Routing | Real OpenRouter & Jev keys in backend env, 30–50 benchmark cases, spending cap, quality validation | Pending |
+| Step 11 | Real Browser Journey | Live ChatGPT, Claude, Gemini web tests in Chrome/Brave; cross-site recall; privacy modals | LIVE PENDING |
+| Step 12 | Final Release & Judge Rehearsal | Fresh `v3/dist`, clean demo account, end-to-end judge demonstration rehearsal | LIVE PENDING |
 
 ---
 
-### Version 2 — Three-Site Extension and Privacy Firewall (Hours 6–14) — [LIVE GATE PENDING]
+## 4. Current & Provisional Compatibility Set
 
-Build the Manifest V3 browser extension with shared TypeScript logic and site adapters for `chatgpt.com`, `claude.ai`, and `gemini.google.com`.
-
-#### Requirements:
-- Per-site capture toggle (starts OFF).
-- Site adapters identify completed user messages, conversation ID, and the native prompt composer.
-- Client-side secret and sensitivity screener.
-- On-page **"Use Memory"** button:
-  - Automatically queries backend with draft prompt.
-  - Automatically selects up to 3 relevant general memories.
-  - Visibly injects approved context into the native composer.
-  - Replaces earlier injected blocks cleanly if clicked repeatedly.
-  - If a sensitive memory is relevant, prompts user with **"Allow once"** or **"Don't use"** before injecting.
-- Single extension side-panel with compact vault, settings, and universal copy/paste fallback route.
-
-#### Version 2 Passes When:
-1. Capture OFF sends nothing.
-2. Each of the three sites captures one user message without capturing an assistant reply.
-3. A fact learned on ChatGPT is automatically selected by **Use Memory** on Claude and Gemini.
-4. A sensitive candidate pauses for approval.
-5. Denial keeps it out of the prepared prompt.
-6. Repeated page updates do not duplicate memories.
-
----
-
-### Version 3 — Feedback, Controls, and Finished Demo (Hours 14–18) — [IN DEVELOPMENT]
-
-Complete the side-panel memory vault, controls, deletion lifecycles, and rehearse the judge demonstration.
-
-#### Requirements:
-- Vault displays cards: wording, short redacted supporting evidence, source, status, and classification.
-- User can edit/correct, block, or forget any memory.
-- Correcting an inferred explanation preference **locks the user's wording** so later model inferences cannot overwrite it.
-- Removing supporting evidence triggers re-evaluation of the preference.
-- Blocking immediately excludes a memory from retrieval.
-- Forgetting deletes the Atlas record and prevents queued events from recreating it.
-- Backend deployment verification and full judge journey rehearsal:
-  - Make explanation-style requests across separate chats.
-  - Show inferred preference with evidence in vault.
-  - Use memory automatically in a different AI provider.
-  - Trigger and deny a synthetic sensitive memory request.
-  - Correct the preference, lock it, and show the locked wording applies across chats.
-
-#### Version 3 Passes When:
-1. Complete judge journey executes cleanly in a real browser session.
-2. Correcting, blocking, forgetting, refresh/retry, and multi-tenant access do not leak or resurrect memories.
-
----
-
-## 4. Current Pinned Compatibility Set
-
-| Component | Pinned Version / Config | Purpose |
+| Component | Pinned Version / Config | Purpose / Status |
 |---|---|---|
 | Python | `3.11.15` | Backend runtime |
 | Node.js | `>= 20.x` | Extension build & script runner |
 | Mem0 OSS | `2.2.0` | Memory orchestration |
-| Google Gen AI SDK | `2.25.0` | Gemini extraction & embeddings |
-| Extraction Model | `gemini-2.5-flash` | Fact and preference extraction |
-| Embedding Model | `models/gemini-embedding-001` | 1536-dimensional embeddings |
+| Backend Host | `127.0.0.1:8000` | Local loopback runtime (no public exposure) |
+| Extraction Primary (Provisional) | `openrouter/glm-5.3-flash` | Fast, cost-efficient fact extraction (mocked until Step 10) |
+| Extraction Fallback (Provisional) | `google/gemini-2.5-flash-lite` | Robust fallback extraction via OpenRouter |
+| Validation Pass (Feature-flagged) | Jev (TypeSafe AI) | Optional second-pass quality/privacy verification |
+| Embedding Model (Provisional) | `openai/text-embedding-3-small` (1536d) | High-performance 1536-dim embeddings via OpenRouter |
+| Legacy Reference Extractor | `gemini-2.5-flash` | Direct Gemini extractor (being transitioned) |
+| Legacy Reference Embedder | `models/gemini-embedding-001` (1536d) | Direct Gemini embedder (being transitioned) |
 | MongoDB Driver | PyMongo `4.18.2` | MongoDB Atlas driver |
 | Vector Index | `memories_vector_index_scoped` | Atlas Vector Search with `payload.user_id` filter |
 | Backend Framework | FastAPI `0.141.1` + Uvicorn `0.37.0` | REST API |
@@ -140,3 +93,5 @@ Complete the side-panel memory vault, controls, deletion lifecycles, and rehears
 1. **Test-first for each version**: Implement the code and the verification suite to prove all criteria before declaring completion.
 2. **Never commit secrets**: `.env` is git-ignored and contains private API keys and database credentials.
 3. **No scope creep**: Reject dashboards, extra websites, MCP, or complex extra settings. Keep the UI compact in the extension side panel.
+4. **Live gates require real browsers**: Automated unit and contract tests (Steps 1–9) do not replace live browser verification on ChatGPT, Claude, and Gemini web (Steps 11–12).
+
