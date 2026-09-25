@@ -16,7 +16,7 @@ import {
 } from '../core/injection.ts';
 import { containsSecret, screenText } from '../core/screener.ts';
 import { screenRecall } from '../core/recall.ts';
-import { CaptureGate } from '../core/capture.ts';
+import { SiteCaptureController } from '../core/capture.ts';
 import { getAllSettings } from '../core/storage.ts';
 
 async function init() {
@@ -230,75 +230,32 @@ function promptSensitiveApproval(sensitiveMemories: MemoryItem[]): Promise<boole
   });
 }
 
-function setupCaptureObserver(adapter: SiteAdapter, apiClient: ContextPassportApiClient, initiallyEnabled: boolean) {
-  const gate = new CaptureGate();
-  let captureEnabled = initiallyEnabled;
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local') return;
-    const change = changes[`capture_${adapter.name}`];
-    if (!change) return;
-    captureEnabled = change.newValue === true;
-    if (!captureEnabled) gate.clear();
+function setupCaptureObserver(adapter: SiteAdapter, apiClient: ContextPassportApiClient, initiallyEnabled: boolean): SiteCaptureController {
+  const controller = new SiteCaptureController({
+    adapter,
+    initialEnabled: initiallyEnabled ?? false,
+    onCapture: async (payload) => {
+      try {
+        await apiClient.ingestMessage(payload);
+        console.info(`[Context Passport] Successfully ingested message for ${adapter.name}`);
+      } catch (err) {
+        console.warn('[Context Passport] Message ingestion failed:', err);
+      }
+    },
   });
 
-  const recordSend = () => {
-    if (!captureEnabled) return;
-    gate.arm(adapter.getComposerDraft(), crypto.randomUUID());
-  };
+  if (typeof chrome !== 'undefined' && chrome?.storage?.onChanged) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') return;
+      const change = changes[`capture_${adapter.name}`];
+      if (!change) return;
+      controller.setEnabled(change.newValue === true);
+    });
+  }
 
-  document.addEventListener('submit', (event) => {
-    const composer = adapter.getComposer();
-    if (composer && event.target instanceof Element && event.target.contains(composer)) recordSend();
-  }, true);
-  document.addEventListener('keydown', (event) => {
-    const composer = adapter.getComposer();
-    if (composer && event.key === 'Enter' && !event.shiftKey && !event.isComposing &&
-        event.target instanceof Node && composer.contains(event.target)) recordSend();
-  }, true);
-  document.addEventListener('click', (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    const button = target.closest('button');
-    if (!button || button.classList.contains('context-passport-btn')) return;
-    const label = `${button.getAttribute('aria-label') || ''} ${button.getAttribute('data-testid') || ''} ${button.textContent || ''}`;
-    if (/\b(send|submit|run prompt)\b/i.test(label) || button.matches('button[type="submit"], button.send-button')) {
-      recordSend();
-    }
-  }, true);
-
-  adapter.observeUserMessages(async (msg) => {
-    if (!captureEnabled) return;
-
-    // Only the user's own words become evidence, even when memory was attached.
-    const cleanText = stripExtensionInjectedContext(msg.text).trim();
-    if (!cleanText) return;
-
-    // 2. Secret Screening: Skip recognized credentials immediately
-    const screenResult = screenText(msg.text);
-    if (screenResult.classification === 'secret' || containsSecret(cleanText)) {
-      console.warn('[Context Passport] Skipping capture: Recognizable credential detected');
-      return;
-    }
-
-    const eventId = gate.take(msg.text);
-    if (!eventId) return;
-
-    // 4. Ingest user message to backend
-    try {
-      await apiClient.ingestMessage({
-        conversation_id: msg.conversationId,
-        text: cleanText,
-        role: 'user',
-        is_extension_context: false,
-        event_id: eventId,
-        source_site: ({ chatgpt: 'chatgpt.com', claude: 'claude.ai', gemini: 'gemini.google.com' } as const)[adapter.name],
-      });
-      console.info(`[Context Passport] Successfully ingested message for ${adapter.name}`);
-    } catch (err) {
-      console.warn('[Context Passport] Message ingestion failed:', err);
-    }
-  });
+  return controller;
 }
+
 
 function escapeHtml(str: string): string {
   const div = document.createElement('div');

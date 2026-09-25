@@ -1,33 +1,48 @@
 export function readComposer(composer: HTMLElement | null): string {
   if (!composer) return '';
-  if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) return composer.value;
+  const isTextarea = (typeof HTMLTextAreaElement !== 'undefined' && composer instanceof HTMLTextAreaElement) || composer.tagName === 'TEXTAREA';
+  const isInput = (typeof HTMLInputElement !== 'undefined' && composer instanceof HTMLInputElement) || composer.tagName === 'INPUT';
+  if (isTextarea || isInput) return (composer as HTMLTextAreaElement | HTMLInputElement).value || '';
   return composer.innerText || composer.textContent || '';
 }
 
 export function writeComposer(composer: HTMLElement | null, text: string): boolean {
   if (!composer) return false;
-  if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
-    const prototype = composer instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-    const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
-    if (setter) setter.call(composer, text);
-    else composer.value = text;
-    composer.dispatchEvent(new Event('input', { bubbles: true }));
-    composer.dispatchEvent(new Event('change', { bubbles: true }));
-    return composer.value === text;
+  const isTextarea = (typeof HTMLTextAreaElement !== 'undefined' && composer instanceof HTMLTextAreaElement) || composer.tagName === 'TEXTAREA';
+  const isInput = (typeof HTMLInputElement !== 'undefined' && composer instanceof HTMLInputElement) || composer.tagName === 'INPUT';
+  if (isTextarea || isInput) {
+    const target = composer as HTMLTextAreaElement | HTMLInputElement;
+    const proto = isTextarea
+      ? (typeof HTMLTextAreaElement !== 'undefined' ? HTMLTextAreaElement.prototype : Object.getPrototypeOf(target))
+      : (typeof HTMLInputElement !== 'undefined' ? HTMLInputElement.prototype : Object.getPrototypeOf(target));
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (setter) setter.call(target, text);
+    else target.value = text;
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+    target.dispatchEvent(new Event('change', { bubbles: true }));
+    return target.value === text;
   }
 
-  composer.focus();
-  const selection = window.getSelection();
-  if (selection) {
-    const range = document.createRange();
-    range.selectNodeContents(composer);
-    selection.removeAllRanges();
-    selection.addRange(range);
+  if (typeof composer.focus === 'function') {
+    composer.focus();
   }
-  const inserted = typeof document.execCommand === 'function' && document.execCommand('insertText', false, text);
+  if (typeof window !== 'undefined' && typeof window.getSelection === 'function' && typeof document !== 'undefined' && typeof document.createRange === 'function') {
+    const selection = window.getSelection();
+    if (selection) {
+      const range = document.createRange();
+      range.selectNodeContents(composer);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  }
+  const inserted = typeof document !== 'undefined' && typeof document.execCommand === 'function' && document.execCommand('insertText', false, text);
   if (!inserted || readComposer(composer) !== text) {
     composer.textContent = text;
-    composer.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+    if (typeof InputEvent !== 'undefined') {
+      composer.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+    } else {
+      composer.dispatchEvent(new Event('input', { bubbles: true }));
+    }
   }
   return readComposer(composer) === text;
 }

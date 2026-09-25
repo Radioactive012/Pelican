@@ -1,4 +1,4 @@
-import type { UserMessageEvent } from './types.ts';
+import type { UserMessageEvent, ObserverOptions } from './types.ts';
 
 type Pending = { text: string; timer: ReturnType<typeof setTimeout> };
 
@@ -7,7 +7,9 @@ export function observeRenderedUserMessages(
   getNodes: () => Element[],
   getConversationId: () => string,
   callback: (message: UserMessageEvent) => void,
+  options?: ObserverOptions,
 ): () => void {
+  const debounceMs = options?.debounceMs ?? 600;
   const seen = new WeakSet<Element>();
   const pending = new Map<Element, Pending>();
   let conversationId = getConversationId();
@@ -29,9 +31,6 @@ export function observeRenderedUserMessages(
       conversationId = nextId;
       if (!placeholderBecameReal) {
         cancelPending();
-        // Newly rendered history is harmless: CaptureGate accepts only a
-        // matching local send. Seeding here would also discard the first turn
-        // when a SPA changes its URL and renders that turn in the same frame.
       }
     }
 
@@ -53,17 +52,54 @@ export function observeRenderedUserMessages(
         }
         seen.add(node);
         callback({ text: finalText, conversationId: getConversationId() });
-      }, 600);
+      }, debounceMs);
       pending.set(node, { text, timer });
     }
   };
 
   const observer = new MutationObserver(scan);
-  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-  window.addEventListener('popstate', scan);
+  if (typeof document !== 'undefined' && document.body) {
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  }
+
+  const onLocationChange = () => {
+    scan();
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('popstate', onLocationChange);
+  }
+
+  // Intercept pushState & replaceState for SPA route changes
+  const origPushState = typeof window !== 'undefined' && window.history?.pushState ? window.history.pushState : null;
+  const origReplaceState = typeof window !== 'undefined' && window.history?.replaceState ? window.history.replaceState : null;
+
+  if (origPushState && window.history) {
+    window.history.pushState = function (...args) {
+      const res = origPushState.apply(this, args);
+      onLocationChange();
+      return res;
+    };
+  }
+  if (origReplaceState && window.history) {
+    window.history.replaceState = function (...args) {
+      const res = origReplaceState.apply(this, args);
+      onLocationChange();
+      return res;
+    };
+  }
+
   return () => {
     observer.disconnect();
-    window.removeEventListener('popstate', scan);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('popstate', onLocationChange);
+      if (origPushState && window.history) {
+        window.history.pushState = origPushState;
+      }
+      if (origReplaceState && window.history) {
+        window.history.replaceState = origReplaceState;
+      }
+    }
     cancelPending();
   };
 }
+

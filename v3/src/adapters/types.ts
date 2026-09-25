@@ -9,6 +9,10 @@ export interface UserMessageEvent {
   conversationId: string;
 }
 
+export interface ObserverOptions {
+  debounceMs?: number;
+}
+
 export interface SiteAdapter {
   name: SiteName;
   displayName: string;
@@ -18,5 +22,6 @@ export interface SiteAdapter {
   getComposerDraft(): string;
   setComposerDraft(text: string): void;
   attachUseMemoryButton(button: HTMLElement): boolean;
-  observeUserMessages(callback: (msg: UserMessageEvent) => void): () => void;
+  observeUserMessages(callback: (msg: UserMessageEvent) => void, options?: ObserverOptions): () => void;
 }
+

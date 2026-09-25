@@ -2,7 +2,7 @@
  * ChatGPT Site Adapter (chatgpt.com)
  */
 
-import type { SiteAdapter, UserMessageEvent } from './types.ts';
+import type { SiteAdapter, UserMessageEvent, ObserverOptions } from './types.ts';
 import { observeRenderedUserMessages } from './messageObserver.ts';
 import { readComposer, writeComposer } from './composer.ts';
 
@@ -82,12 +82,16 @@ export class ChatGPTAdapter implements SiteAdapter {
     return true;
   }
 
-  observeUserMessages(callback: (msg: UserMessageEvent) => void): () => void {
+  observeUserMessages(callback: (msg: UserMessageEvent) => void, options?: ObserverOptions): () => void {
     return observeRenderedUserMessages(
-      () => Array.from(document.querySelectorAll('[data-message-author-role="user"]'))
-        .filter((node) => !node.parentElement?.closest('[data-message-author-role="user"]')),
+      () => {
+        const nodes = Array.from(document.querySelectorAll('[data-message-author-role="user"]'))
+          .filter((node) => !node.closest('[data-message-author-role="assistant"]'));
+        return nodes.filter((node) => !nodes.some((other) => other !== node && other.contains(node)));
+      },
       () => this.getConversationId(),
       callback,
+      options,
     );
   }
 

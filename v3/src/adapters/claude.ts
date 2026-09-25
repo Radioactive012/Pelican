@@ -2,7 +2,7 @@
  * Claude Site Adapter (claude.ai)
  */
 
-import type { SiteAdapter, UserMessageEvent } from './types.ts';
+import type { SiteAdapter, UserMessageEvent, ObserverOptions } from './types.ts';
 import { observeRenderedUserMessages } from './messageObserver.ts';
 import { readComposer, writeComposer } from './composer.ts';
 
@@ -80,16 +80,18 @@ export class ClaudeAdapter implements SiteAdapter {
     return true;
   }
 
-  observeUserMessages(callback: (msg: UserMessageEvent) => void): () => void {
+  observeUserMessages(callback: (msg: UserMessageEvent) => void, options?: ObserverOptions): () => void {
     return observeRenderedUserMessages(
       () => {
         const nodes = Array.from(document.querySelectorAll('[data-testid="user-message"], .font-user-message'))
-          .filter((node) => !node.closest('[data-testid="assistant-message"]'));
+          .filter((node) => !node.closest('[data-testid="assistant-message"], .font-claude-message, [data-is-streaming="true"]'));
         return nodes.filter((node) => !nodes.some((other) => other !== node && other.contains(node)));
       },
       () => this.getConversationId(),
       callback,
+      options,
     );
   }
+
 
 }

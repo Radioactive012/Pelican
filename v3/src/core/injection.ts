@@ -13,7 +13,8 @@ export const INJECTION_END_MARKER = '[/Context Passport]';
 
 // Regex that matches any existing injected Context Passport block
 const INJECTION_BLOCK_REGEX = /\[Context Passport:[^\]]*\][\s\S]*?\[\/Context Passport\]/gi;
-// Fallback regex matching common legacy patterns
+// Fallback and comment format regexes
+const COMMENT_BLOCK_REGEX = /<!--\s*CONTEXT_PASSPORT_START[\s\S]*?CONTEXT_PASSPORT_END\s*-->/gi;
 const FALLBACK_BLOCK_REGEX = /<!-- Context-Passport[\s\S]*?-->/gi;
 
 export interface MemoryItem {
@@ -34,6 +35,7 @@ export interface PreferenceItem {
 export function isExtensionInjectedContext(text: string): boolean {
   if (!text) return false;
   return /\[Context Passport:[^\]]*\][\s\S]*?\[\/Context Passport\]/i.test(text) ||
+    /<!--\s*CONTEXT_PASSPORT_START[\s\S]*?CONTEXT_PASSPORT_END\s*-->/i.test(text) ||
     /<!-- Context-Passport[\s\S]*?-->/i.test(text);
 }
 
@@ -43,9 +45,11 @@ export function isExtensionInjectedContext(text: string): boolean {
 export function stripExtensionInjectedContext(text: string): string {
   if (!text) return '';
   let cleaned = text.replace(INJECTION_BLOCK_REGEX, '');
+  cleaned = cleaned.replace(COMMENT_BLOCK_REGEX, '');
   cleaned = cleaned.replace(FALLBACK_BLOCK_REGEX, '');
   return cleaned.trim();
 }
+
 
 /**
  * Formats memories and preferences into a structured context block.

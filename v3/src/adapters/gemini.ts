@@ -2,7 +2,7 @@
  * Gemini Site Adapter (gemini.google.com)
  */
 
-import type { SiteAdapter, UserMessageEvent } from './types.ts';
+import type { SiteAdapter, UserMessageEvent, ObserverOptions } from './types.ts';
 import { observeRenderedUserMessages } from './messageObserver.ts';
 import { readComposer, writeComposer } from './composer.ts';
 
@@ -84,17 +84,19 @@ export class GeminiAdapter implements SiteAdapter {
     return true;
   }
 
-  observeUserMessages(callback: (msg: UserMessageEvent) => void): () => void {
+  observeUserMessages(callback: (msg: UserMessageEvent) => void, options?: ObserverOptions): () => void {
     return observeRenderedUserMessages(
       () => {
         const primary = Array.from(document.querySelectorAll('user-query'));
         const nodes = primary.length ? primary : Array.from(document.querySelectorAll('div[data-sender="user"], .user-query-container, .user-query-text'));
-        return nodes.filter((node) => !node.closest('model-response, .model-response-container'))
+        return nodes.filter((node) => !node.closest('model-response, .model-response-container, [data-sender="model"], response-container'))
           .filter((node) => !nodes.some((other) => other !== node && other.contains(node)));
       },
       () => this.getConversationId(),
       callback,
+      options,
     );
   }
+
 
 }
