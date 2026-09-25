@@ -14,7 +14,7 @@ def field_paths(index: dict) -> set[str]:
 
 
 def verify(wait_seconds: int) -> dict[str, object]:
-    settings = load_settings()
+    settings = load_settings(require_gemini=False)
     store = ScopedMongoDB(
         db_name=settings.mongodb_db_name,
         collection_name=settings.mongodb_collection_name,

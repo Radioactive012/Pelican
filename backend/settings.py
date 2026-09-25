@@ -31,12 +31,13 @@ class Settings:
     history_db_path: str
 
 
-def load_settings() -> Settings:
+def load_settings(require_gemini: bool = True) -> Settings:
     history_path = Path(os.getenv("MEM0_HISTORY_DB_PATH", "backend/mem0_history.db"))
     if not history_path.is_absolute():
         history_path = ROOT_DIR / history_path
+    gemini_key = _required("GEMINI_API_KEY") if require_gemini else os.getenv("GEMINI_API_KEY", "")
     return Settings(
-        gemini_api_key=_required("GEMINI_API_KEY"),
+        gemini_api_key=gemini_key,
         gemini_extraction_model=os.getenv("GEMINI_EXTRACTION_MODEL", "gemini-2.5-flash"),
         gemini_embedding_model=os.getenv("GEMINI_EMBEDDING_MODEL", "models/gemini-embedding-001"),
         gemini_embedding_dims=int(os.getenv("GEMINI_EMBEDDING_DIMS", "1536")),
