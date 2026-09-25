@@ -11,6 +11,9 @@
     "test": "PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests",
     "start": "PYTHONPATH=backend backend/.venv/bin/python backend/server.py",
     "gate:audit": "PYTHONPATH=backend backend/.venv/bin/python backend/inspect_mem0.py",
+    "gate:history": "PYTHONPATH=backend backend/.venv/bin/python backend/test_mem0_history_audit.py",
+    "gate:gemini": "PYTHONPATH=backend backend/.venv/bin/python backend/prove_gemini.py",
+    "gate:supabase": "PYTHONPATH=backend backend/.venv/bin/python backend/prove_supabase.py",
     "gate:index": "PYTHONPATH=backend backend/.venv/bin/python backend/verify_atlas_index.py --wait 300",
     "gate:memory": "PYTHONPATH=backend backend/.venv/bin/python backend/test_isolation.py",
     "gate:mcp": "PYTHONPATH=backend backend/.venv/bin/python backend/verify_mcp.py"

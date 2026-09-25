@@ -32,3 +32,28 @@ Context Passport compensates in two places:
 The local SQLite history file is suitable for this development gate. It is not
 a horizontally scalable production history store; a later phase should move
 history to a durable shared database before running multiple Render instances.
+
+## Edit, Delete, and History Lifecycle Verification
+
+The exact behavior of Mem0 2.2.0 during updates and deletions was empirically
+verified via `backend/test_mem0_history_audit.py`:
+
+1. **Initial Memory Creation (`ADD`)**:
+   - Ingesting a memory creates a row in the SQLite `history` table:
+     `event = 'ADD'`, `old_memory = NULL`, `new_memory = '<content>'`, `is_deleted = 0`.
+2. **Memory Modification (`UPDATE`)**:
+   - Modifying a memory (e.g. from `"The project uses MongoDB."` to `"The project uses PostgreSQL."`)
+     inserts a new row into `history`:
+     `event = 'UPDATE'`, `old_memory = 'The project uses MongoDB.'`, `new_memory = 'The project uses PostgreSQL.'`, `is_deleted = 0`.
+   - The original text remains permanently stored in `old_memory`.
+3. **Memory Deletion (`DELETE`)**:
+   - Deleting the memory removes the vector document from MongoDB, but in SQLite history:
+     `event = 'DELETE'`, `old_memory = 'The project uses PostgreSQL.'`, `new_memory = NULL`, `is_deleted = 1`.
+   - The past history rows are **never purged**. Replaced text and deleted text both remain
+     accessible in plaintext inside the SQLite `history` table.
+
+**Implication for Context Passport**:
+In V0/V1, deletion removes vector retrieval capability, but true forgetting ("hard delete")
+requires explicitly purging the corresponding rows from the SQLite/relational history store.
+This requirement is documented for the V4 GDPR/privacy compliance phase.
+
