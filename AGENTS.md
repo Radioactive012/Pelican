@@ -94,4 +94,5 @@ Context Passport is a **self-improving, privacy-first browser memory** product.
 2. **Never commit secrets**: `.env` is git-ignored and contains private API keys and database credentials.
 3. **No scope creep**: Reject dashboards, extra websites, MCP, or complex extra settings. Keep the UI compact in the extension side panel.
 4. **Live gates require real browsers**: Automated unit and contract tests (Steps 1–9) do not replace live browser verification on ChatGPT, Claude, and Gemini web (Steps 11–12).
+5. **Living documentation & final checklist updates**: After each step, update `AGENTS.md` and `v3.md`. Record newly discovered failure modes in Section 3 and append any newly identified edge cases or end-to-end verification items to Section 4 of `v3.md` ("Living Checklist: Things We Need to Check at Last").
 
