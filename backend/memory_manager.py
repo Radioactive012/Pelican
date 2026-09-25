@@ -120,7 +120,14 @@ def build_mem0_config(settings: Any) -> dict[str, Any]:
 class MemoryManager:
     """Tenant-safe facade around Mem0 OSS and MongoDB Atlas vector storage."""
 
-    def __init__(self, settings: Settings | None = None):
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        *,
+        extractor: Optional[Any] = None,
+        embedder: Optional[Any] = None,
+        validator: Optional[Any] = None,
+    ):
         allow_offline = os.getenv("ALLOW_OFFLINE_EMBEDDINGS", "false").lower() == "true"
         self._allow_offline = allow_offline
         self.settings = settings or load_settings(require_gemini=not allow_offline and os.getenv("LLM_PROVIDER") == "gemini")
@@ -129,6 +136,11 @@ class MemoryManager:
         self.db = self.mongo_client[self.settings.mongodb_db_name]
         self.collection = self.db[self.settings.mongodb_collection_name]
         self.forgotten_sources = self.db["forgotten_memory_sources"]
+
+        # Attached provider layer instances
+        self.extractor = extractor
+        self.embedder = embedder
+        self.validator = validator
 
         # Enforce required keys in real production mode
         has_openrouter = bool(getattr(self.settings, "openrouter_api_key", None))
@@ -145,14 +157,24 @@ class MemoryManager:
 
         if provider == "openrouter" and has_openrouter:
             self.memory = Memory.from_config(build_mem0_config(self.settings))
-            from providers import OpenRouterEmbedder
-            self._openrouter_embedder = OpenRouterEmbedder(
-                api_key=getattr(self.settings, "openrouter_api_key", None),
-                base_url=getattr(self.settings, "openrouter_base_url", "https://openrouter.ai/api/v1"),
-                model=self.active_embedding_model,
-                dimensions=getattr(self.settings, "embedding_dims", 1536),
-                timeout_seconds=getattr(self.settings, "provider_timeout_seconds", 30.0),
-            )
+            from providers import OpenRouterEmbedder, OpenRouterExtractor
+            if self.embedder is None:
+                self._openrouter_embedder = OpenRouterEmbedder(
+                    api_key=getattr(self.settings, "openrouter_api_key", None),
+                    base_url=getattr(self.settings, "openrouter_base_url", "https://openrouter.ai/api/v1"),
+                    model=self.active_embedding_model,
+                    dimensions=getattr(self.settings, "embedding_dims", 1536),
+                    timeout_seconds=getattr(self.settings, "provider_timeout_seconds", 30.0),
+                )
+                self.embedder = self._openrouter_embedder
+            if self.extractor is None:
+                self.extractor = OpenRouterExtractor(
+                    api_key=getattr(self.settings, "openrouter_api_key", None),
+                    base_url=getattr(self.settings, "openrouter_base_url", "https://openrouter.ai/api/v1"),
+                    primary_model=getattr(self.settings, "extraction_primary_model", "z-ai/glm-5.3-flash"),
+                    fallback_model=getattr(self.settings, "extraction_fallback_model", "google/gemini-2.5-flash-lite"),
+                    timeout_seconds=getattr(self.settings, "provider_timeout_seconds", 30.0),
+                )
         elif has_gemini:
             self.memory = Memory.from_config(build_mem0_config(self.settings))
             # Mem0 creates SDK clients without request deadlines. Reuse one
@@ -172,6 +194,10 @@ class MemoryManager:
         else:
             self.memory = None
 
+        if self.validator is None:
+            from providers import create_validator
+            self.validator = create_validator(self.settings)
+
     @property
     def active_embedding_model(self) -> str | None:
         if hasattr(self, "settings") and self.settings is not None:
@@ -187,10 +213,14 @@ class MemoryManager:
         Generates 1536-dimensional embedding using active provider API.
         Never silently uses fallback embeddings in real mode.
         """
-        if self._openrouter_embedder is not None:
+        embedder = getattr(self, "embedder", None)
+        if embedder is not None:
+            return embedder.embed(text)
+
+        if getattr(self, "_openrouter_embedder", None) is not None:
             return self._openrouter_embedder.embed(text)
 
-        if self.settings.gemini_api_key and self._genai_client is not None:
+        if hasattr(self, "settings") and getattr(self.settings, "gemini_api_key", None) and getattr(self, "_genai_client", None) is not None:
             from google.genai import types
 
             config = types.EmbedContentConfig(output_dimensionality=self.settings.gemini_embedding_dims)
@@ -203,8 +233,9 @@ class MemoryManager:
                 return list(resp.embeddings[0].values)
             raise RuntimeError("Gemini embed_content returned no embeddings")
 
-        if self._allow_offline:
-            return generate_deterministic_embedding(text, self.settings.embedding_dims)
+        if getattr(self, "_allow_offline", False):
+            dims = getattr(self.settings, "embedding_dims", 1536) if hasattr(self, "settings") and self.settings else 1536
+            return generate_deterministic_embedding(text, dims)
 
         raise RuntimeError("Provider API key is required for embeddings in real mode.")
 
@@ -260,6 +291,71 @@ class MemoryManager:
                     }
                     for doc in prior
                 ]}
+
+        # If a dedicated FactExtractor is configured on the provider layer,
+        # extract standalone durable facts through the provider abstraction.
+        extractor = getattr(self, "extractor", None)
+        if extractor is not None:
+            extraction_result = extractor.extract_facts(text, user_id=user_id)
+            saved_results: List[Dict[str, Any]] = []
+            now_iso = datetime.now(timezone.utc).isoformat()
+            validator = getattr(self, "validator", None)
+
+            for fact_text in extraction_result.facts:
+                clean_fact = fact_text.strip()
+                if not clean_fact:
+                    continue
+                if contains_secret(clean_fact):
+                    logger.info("Screened secret credential from extracted fact candidate: %s", user_id)
+                    continue
+
+                fact_classification = classify_text(clean_fact)
+                if validator is not None and validator.is_enabled():
+                    try:
+                        v_res = validator.validate(clean_fact)
+                        if v_res.classification in ("general", "sensitive"):
+                            fact_classification = v_res.classification
+                    except Exception as v_exc:
+                        logger.warning("Validator pass error (%s); falling back to rule-based", v_exc)
+
+                # Rule-based allergies and sensitive keywords always enforce sensitive
+                if classify_text(clean_fact) == "sensitive":
+                    fact_classification = "sensitive"
+
+                doc_id = str(uuid.uuid4())
+                embedding = self.embed_text(clean_fact)
+                doc = {
+                    "_id": doc_id,
+                    "text": clean_fact,
+                    "embedding": embedding,
+                    "payload": {
+                        "user_id": user_id,
+                        "data": clean_fact,
+                        "classification": fact_classification,
+                        "status": "active",
+                        "embedding_model": self.active_embedding_model,
+                        "created_at": now_iso,
+                        "support_excerpt": redacted_evidence_excerpt(
+                            clean_fact, sensitive=fact_classification == "sensitive"
+                        ),
+                        "model_used": extraction_result.model_used,
+                        "fallback_used": extraction_result.fallback_used,
+                        **(metadata or {}),
+                    },
+                }
+                self.collection.insert_one(doc)
+                saved_results.append({
+                    "id": doc_id,
+                    "memory": clean_fact,
+                    "event": "ADD",
+                    "classification": fact_classification,
+                })
+
+            if source_event_key and self._source_forgotten(user_id, source_event_key):
+                self._delete_source_memories(user_id, source_event_key)
+                return {"status": "skipped", "reason": "forgotten_source", "results": []}
+
+            return {"results": saved_results}
 
         # If Mem0 is available
         if self.memory:
@@ -454,6 +550,15 @@ class MemoryManager:
             # If text indicates allergy or uncertain, enforce sensitive
             if classify_text(text_content) == "sensitive":
                 classification = "sensitive"
+
+            validator = getattr(self, "validator", None)
+            if validator is not None and validator.is_enabled():
+                try:
+                    v_res = validator.validate(text_content)
+                    if v_res.classification == "sensitive":
+                        classification = "sensitive"
+                except Exception:
+                    pass
 
             memory_obj = {
                 "id": str(doc["_id"]),

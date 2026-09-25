@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -631,3 +632,89 @@ class MockValidator(ValidatorPass):
             confidence=0.98,
             reason="Mock Jev validation",
         )
+
+
+# ---------------------------------------------------------------------------
+# Provider Factories
+# ---------------------------------------------------------------------------
+def create_extractor(settings: Optional[Any] = None, *, fail_mode: Optional[str] = None) -> Optional[FactExtractor]:
+    """Factory creating the configured FactExtractor, or None if unconfigured."""
+    if fail_mode is not None:
+        return MockExtractor(fail_mode=fail_mode)
+
+    use_mock = os.getenv("USE_MOCK_EXTRACTOR", "false").lower() == "true"
+    if use_mock:
+        return MockExtractor()
+
+    if settings is None:
+        try:
+            from settings import load_settings
+            settings = load_settings(require_gemini=False)
+        except Exception:
+            settings = None
+
+    if settings is None:
+        return None
+
+    provider = getattr(settings, "llm_provider", "openrouter")
+    openrouter_api_key = getattr(settings, "openrouter_api_key", None)
+    if provider == "openrouter" and openrouter_api_key:
+        return OpenRouterExtractor(
+            api_key=openrouter_api_key,
+            base_url=getattr(settings, "openrouter_base_url", "https://openrouter.ai/api/v1"),
+            primary_model=getattr(settings, "extraction_primary_model", "z-ai/glm-5.3-flash"),
+            fallback_model=getattr(settings, "extraction_fallback_model", "google/gemini-2.5-flash-lite"),
+            timeout_seconds=getattr(settings, "provider_timeout_seconds", 30.0),
+        )
+    return None
+
+
+def create_embedder(settings: Optional[Any] = None) -> Optional[Embedder]:
+    """Factory creating the configured Embedder, or None if unconfigured."""
+    use_mock = os.getenv("USE_MOCK_EMBEDDER", "false").lower() == "true"
+    if use_mock:
+        dims = int(os.getenv("EMBEDDING_DIMS", "1536"))
+        return MockEmbedder(dimensions=dims)
+
+    if settings is None:
+        try:
+            from settings import load_settings
+            settings = load_settings(require_gemini=False)
+        except Exception:
+            settings = None
+
+    if settings is None:
+        return None
+
+    provider = getattr(settings, "llm_provider", "openrouter")
+    openrouter_api_key = getattr(settings, "openrouter_api_key", None)
+    dims = getattr(settings, "embedding_dims", 1536)
+    if provider == "openrouter" and openrouter_api_key:
+        return OpenRouterEmbedder(
+            api_key=openrouter_api_key,
+            base_url=getattr(settings, "openrouter_base_url", "https://openrouter.ai/api/v1"),
+            model=getattr(settings, "embedding_model", "openai/text-embedding-3-small"),
+            dimensions=dims,
+            timeout_seconds=getattr(settings, "provider_timeout_seconds", 30.0),
+        )
+    return None
+
+
+def create_validator(settings: Optional[Any] = None) -> ValidatorPass:
+    """Factory creating the configured ValidatorPass (Jev or Mock)."""
+    if settings is None:
+        try:
+            from settings import load_settings
+            settings = load_settings(require_gemini=False)
+        except Exception:
+            settings = None
+
+    enabled = getattr(settings, "enable_jev_validation", False) if settings else False
+    api_key = getattr(settings, "jev_api_key", "") if settings else ""
+    return JevValidator(
+        enabled=bool(enabled and api_key),
+        api_key=api_key or "",
+        api_url=getattr(settings, "jev_api_url", "https://api.typesafe.ai/v1/systemone") if settings else "https://api.typesafe.ai/v1/systemone",
+        timeout_seconds=getattr(settings, "provider_timeout_seconds", 15.0) if settings else 15.0,
+    )
+

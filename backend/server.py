@@ -101,10 +101,30 @@ memory_manager: Optional[MemoryManager] = None
 preference_engine: Optional[PreferenceEngine] = None
 
 
+def get_extractor():
+    from providers import create_extractor
+    return create_extractor()
+
+
+def get_embedder():
+    from providers import create_embedder
+    return create_embedder()
+
+
+def get_validator():
+    from providers import create_validator
+    return create_validator()
+
+
 def get_mem_manager() -> MemoryManager:
     global memory_manager
     if memory_manager is None:
-        memory_manager = MemoryManager()
+        from providers import create_extractor, create_embedder, create_validator
+        memory_manager = MemoryManager(
+            extractor=create_extractor(),
+            embedder=create_embedder(),
+            validator=create_validator(),
+        )
     return memory_manager
 
 

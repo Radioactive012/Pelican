@@ -55,7 +55,7 @@ Context Passport is a **self-improving, privacy-first browser memory** product.
 | Step 1 | Baseline & Documentation | Working branch, audit baseline, update docs, run existing suites | Passed |
 | Step 2 | Provider Interfaces & Mocks | Server-side extraction/embedder interfaces, mock providers, fail-closed handling, token counters | Passed |
 | Step 3 | Embeddings & Safe Migration | 1536-dim `text-embedding-3-small`, model tagging, vector migration tool, tenant scoping | Passed |
-| Step 4 | Ingest, Privacy & Preferences | Provider integration with safe retry state machine, secret screener, 3-obs/2-chat engine | Pending |
+| Step 4 | Ingest, Privacy & Preferences | Provider integration with safe retry state machine, secret screener, 3-obs/2-chat engine | Passed |
 | Step 5 | Three-Site Capture | ChatGPT, Claude, Gemini adapters; DOM fixtures; single-turn capture; no assistant/history | Pending |
 | Step 6 | Recall, Consent & Injection | Use Memory, up-to-3 general, sensitive consent modal, composer replacement, fallback UI | Pending |
 | Step 7 | Vault Controls & Lifecycle | Card rendering, locked preference corrections, evidence removal, block/forget lifecycles | Pending |
