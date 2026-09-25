@@ -68,12 +68,31 @@ def build_mem0_config(settings: Settings) -> dict[str, Any]:
                 "mongo_uri": settings.mongodb_uri,
                 "db_name": settings.mongodb_db_name,
                 "collection_name": settings.mongodb_collection_name,
-                "embedding_model_dims": settings.gemini_embedding_dims,
+                "embedding_model_dims": settings.embedding_dims,
             },
         },
     }
 
-    if settings.gemini_api_key:
+    if settings.llm_provider == "openrouter" and settings.openrouter_api_key:
+        config["llm"] = {
+            "provider": "openai",
+            "config": {
+                "api_key": settings.openrouter_api_key,
+                "model": settings.extraction_primary_model,
+                "openai_base_url": settings.openrouter_base_url,
+                "temperature": 0,
+            },
+        }
+        config["embedder"] = {
+            "provider": "openai",
+            "config": {
+                "api_key": settings.openrouter_api_key,
+                "model": settings.embedding_model,
+                "openai_base_url": settings.openrouter_base_url,
+                "embedding_dims": settings.embedding_dims,
+            },
+        }
+    elif settings.gemini_api_key:
         config["llm"] = {
             "provider": "gemini",
             "config": {
@@ -99,20 +118,36 @@ class MemoryManager:
     def __init__(self, settings: Settings | None = None):
         allow_offline = os.getenv("ALLOW_OFFLINE_EMBEDDINGS", "false").lower() == "true"
         self._allow_offline = allow_offline
-        self.settings = settings or load_settings(require_gemini=not allow_offline)
+        self.settings = settings or load_settings(require_gemini=not allow_offline and os.getenv("LLM_PROVIDER") == "gemini")
         VectorStoreFactory.provider_to_class["mongodb"] = "scoped_mongodb.ScopedMongoDB"
         self.mongo_client = MongoClient(self.settings.mongodb_uri)
         self.db = self.mongo_client[self.settings.mongodb_db_name]
         self.collection = self.db[self.settings.mongodb_collection_name]
         self.forgotten_sources = self.db["forgotten_memory_sources"]
 
-        # Require Gemini in real V1 mode
-        if not self.settings.gemini_api_key and not self._allow_offline:
-            raise RuntimeError(
-                "GEMINI_API_KEY is required in real V1 mode. Silent fallback embeddings are disabled."
-            )
+        # Enforce required keys in real production mode
+        has_openrouter = bool(self.settings.openrouter_api_key)
+        has_gemini = bool(self.settings.gemini_api_key)
+        if not self._allow_offline:
+            if self.settings.llm_provider == "openrouter" and not has_openrouter:
+                raise RuntimeError("OPENROUTER_API_KEY is required in real mode. Silent fallback embeddings are disabled.")
+            elif self.settings.llm_provider == "gemini" and not has_gemini:
+                raise RuntimeError("GEMINI_API_KEY is required in real V1 mode. Silent fallback embeddings are disabled.")
 
-        if self.settings.gemini_api_key:
+        self._genai_client = None
+        self._openrouter_embedder = None
+
+        if self.settings.llm_provider == "openrouter" and has_openrouter:
+            self.memory = Memory.from_config(build_mem0_config(self.settings))
+            from providers import OpenRouterEmbedder
+            self._openrouter_embedder = OpenRouterEmbedder(
+                api_key=self.settings.openrouter_api_key,
+                base_url=self.settings.openrouter_base_url,
+                model=self.settings.embedding_model,
+                dimensions=self.settings.embedding_dims,
+                timeout_seconds=self.settings.provider_timeout_seconds,
+            )
+        elif self.settings.gemini_api_key:
             self.memory = Memory.from_config(build_mem0_config(self.settings))
             # Mem0 creates SDK clients without request deadlines. Reuse one
             # bounded client so a stalled provider cannot hang capture forever.
@@ -133,10 +168,13 @@ class MemoryManager:
 
     def embed_text(self, text: str) -> List[float]:
         """
-        Generates 1536-dimensional embedding using real Gemini API.
-        Never silently uses fallback embeddings in real V1 mode.
+        Generates 1536-dimensional embedding using active provider API.
+        Never silently uses fallback embeddings in real mode.
         """
-        if self.settings.gemini_api_key:
+        if self._openrouter_embedder is not None:
+            return self._openrouter_embedder.embed(text)
+
+        if self.settings.gemini_api_key and self._genai_client is not None:
             from google.genai import types
 
             config = types.EmbedContentConfig(output_dimensionality=self.settings.gemini_embedding_dims)
@@ -150,9 +188,9 @@ class MemoryManager:
             raise RuntimeError("Gemini embed_content returned no embeddings")
 
         if self._allow_offline:
-            return generate_deterministic_embedding(text, self.settings.gemini_embedding_dims)
+            return generate_deterministic_embedding(text, self.settings.embedding_dims)
 
-        raise RuntimeError("GEMINI_API_KEY is required for embeddings in real V1 mode.")
+        raise RuntimeError("Provider API key is required for embeddings in real mode.")
 
     def add(
         self,

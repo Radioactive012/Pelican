@@ -115,12 +115,43 @@ def get_pref_engine() -> PreferenceEngine:
     return preference_engine
 
 
+def get_active_llm_provider() -> str:
+    explicit = os.getenv("LLM_PROVIDER")
+    if explicit:
+        return explicit.lower()
+    if os.getenv("OPENROUTER_API_KEY"):
+        return "openrouter"
+    if os.getenv("GEMINI_API_KEY"):
+        return "gemini"
+    return "openrouter"
+
+
 def require_paid_tier_confirmation() -> None:
-    """Fail closed before sending conversation text or a draft to Gemini."""
-    if os.getenv("APP_ENV", "production").lower() != "test" and os.getenv(
-        "GEMINI_PAID_TIER_CONFIRMED", "false"
-    ).lower() != "true":
-        raise HTTPException(status_code=503, detail="Gemini paid-tier confirmation is required before capture or recall.")
+    """Fail closed before sending conversation text or a draft to models."""
+    if os.getenv("APP_ENV", "production").lower() == "test":
+        return
+
+    provider = get_active_llm_provider()
+    if provider == "gemini":
+        if os.getenv("GEMINI_PAID_TIER_CONFIRMED", "false").lower() != "true":
+            raise HTTPException(
+                status_code=503,
+                detail="Gemini paid-tier confirmation is required before capture or recall.",
+            )
+    elif provider == "openrouter":
+        if not os.getenv("OPENROUTER_API_KEY"):
+            raise HTTPException(
+                status_code=503,
+                detail="OPENROUTER_API_KEY is required before capture or recall.",
+            )
+        from providers import global_usage_tracker
+        try:
+            global_usage_tracker.check_cap()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+
+
+require_provider_ready = require_paid_tier_confirmation
 
 
 # Request / Response Schemas
@@ -166,18 +197,29 @@ async def health() -> dict[str, str]:
 
 @app.get("/ready")
 async def ready() -> JSONResponse:
-    required = (
-        "GEMINI_API_KEY",
+    provider = get_active_llm_provider()
+    required = [
         "MONGODB_URI",
         "SUPABASE_URL",
         "SUPABASE_ANON_KEY",
         "SUPABASE_SERVICE_ROLE_KEY",
-    )
+    ]
+    if provider == "gemini":
+        required.insert(0, "GEMINI_API_KEY")
+    elif provider == "openrouter":
+        required.insert(0, "OPENROUTER_API_KEY")
+
     missing = [name for name in required if not os.getenv(name)]
-    if os.getenv("APP_ENV", "production").lower() != "test" and os.getenv(
-        "GEMINI_PAID_TIER_CONFIRMED", "false"
-    ).lower() != "true":
-        missing.append("GEMINI_PAID_TIER_CONFIRMED")
+    if provider == "gemini":
+        if os.getenv("APP_ENV", "production").lower() != "test" and os.getenv(
+            "GEMINI_PAID_TIER_CONFIRMED", "false"
+        ).lower() != "true":
+            missing.append("GEMINI_PAID_TIER_CONFIRMED")
+
+    if os.getenv("ENABLE_JEV_VALIDATION", "false").lower() == "true":
+        if not os.getenv("JEV_API_KEY"):
+            missing.append("JEV_API_KEY")
+
     return JSONResponse(
         {"status": "ready" if not missing else "configuration_required", "missing": missing},
         status_code=200 if not missing else 503,
