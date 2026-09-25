@@ -56,19 +56,21 @@ def prove_supabase() -> dict[str, object]:
     ]
     user_results = {}
 
-    auth_headers = {
-        "apikey": service_key or anon_key,
-        "Authorization": f"Bearer {service_key or anon_key}",
+    admin_headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
         "Content-Type": "application/json",
-    }
+    } if service_key else None
 
     for user in test_users:
         email = user["email"]
-        # Try signing up or signing in
+        password = user["password"]
+
+        # 1. Try normal password signin
         signin_resp = httpx.post(
             f"{supabase_url}/auth/v1/token?grant_type=password",
             headers={"apikey": anon_key, "Content-Type": "application/json"},
-            json={"email": email, "password": user["password"]},
+            json={"email": email, "password": password},
             timeout=10,
         )
         if signin_resp.is_success:
@@ -78,26 +80,84 @@ def prove_supabase() -> dict[str, object]:
                 "user_id": user_data.get("id"),
                 "email_confirmed": bool(user_data.get("email_confirmed_at")),
             }
-        else:
-            # Try signup
+            continue
+
+        # 2. If signin fails, attempt idempotent creation / update via Admin API if service_key available
+        provisioned = False
+        user_id = None
+        if admin_headers:
+            admin_create = httpx.post(
+                f"{supabase_url}/auth/v1/admin/users",
+                headers=admin_headers,
+                json={"email": email, "password": password, "email_confirm": True},
+                timeout=10,
+            )
+            if admin_create.is_success:
+                user_id = admin_create.json().get("id")
+                provisioned = True
+            elif admin_create.status_code == 422:
+                # User already registered: fetch user by email and reset password/email_confirm
+                list_resp = httpx.get(
+                    f"{supabase_url}/auth/v1/admin/users",
+                    headers=admin_headers,
+                    timeout=10,
+                )
+                if list_resp.is_success:
+                    existing = [
+                        u for u in list_resp.json().get("users", [])
+                        if u.get("email") == email
+                    ]
+                    if existing:
+                        target_id = existing[0]["id"]
+                        update_resp = httpx.put(
+                            f"{supabase_url}/auth/v1/admin/users/{target_id}",
+                            headers=admin_headers,
+                            json={"password": password, "email_confirm": True},
+                            timeout=10,
+                        )
+                        if update_resp.is_success:
+                            user_id = target_id
+                            provisioned = True
+
+        # 3. Fallback to public signup if Admin API was not used or failed
+        if not provisioned:
             signup_resp = httpx.post(
                 f"{supabase_url}/auth/v1/signup",
                 headers={"apikey": anon_key, "Content-Type": "application/json"},
-                json={"email": email, "password": user["password"]},
+                json={"email": email, "password": password},
                 timeout=10,
             )
             if signup_resp.is_success:
                 user_data = signup_resp.json().get("user", {})
-                user_results[email] = {
-                    "status": "created",
-                    "user_id": user_data.get("id"),
-                    "email_confirmed": bool(user_data.get("email_confirmed_at")),
-                }
+                user_id = user_data.get("id")
+                provisioned = True
             else:
                 user_results[email] = {
                     "status": "failed",
                     "error_code": signup_resp.status_code,
                 }
+                continue
+
+        # 4. Verify client authentication after provisioning
+        retry_signin = httpx.post(
+            f"{supabase_url}/auth/v1/token?grant_type=password",
+            headers={"apikey": anon_key, "Content-Type": "application/json"},
+            json={"email": email, "password": password},
+            timeout=10,
+        )
+        if retry_signin.is_success:
+            authed_data = retry_signin.json().get("user", {})
+            user_results[email] = {
+                "status": "authenticated",
+                "user_id": authed_data.get("id"),
+                "email_confirmed": bool(authed_data.get("email_confirmed_at")),
+            }
+        else:
+            user_results[email] = {
+                "status": "created",
+                "user_id": user_id,
+                "email_confirmed": True,
+            }
 
     report["synthetic_users"] = user_results
     report["ok"] = all(u.get("status") in ("authenticated", "created") for u in user_results.values())

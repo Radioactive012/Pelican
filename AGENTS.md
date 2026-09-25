@@ -71,7 +71,8 @@ PYTHONPATH=backend backend/.venv/bin/python backend/test_atlas_vector_isolation.
 # 6. Prove live Gemini extraction and 1536-dim embedding (requires GEMINI_API_KEY)
 npm run gate:gemini
 
-# 7. Prove Supabase Auth reachability & synthetic users (requires SUPABASE_URL)
+# 7. Prove Supabase Auth reachability & synthetic users
+# Requires SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY
 npm run gate:supabase
 
 # 8. Full end-to-end memory ingestion and two-user semantic isolation proof
@@ -83,6 +84,15 @@ npm run gate:mcp
 # 10. Start local MCP server
 npm start
 ```
+
+### Current Integration Status (2026-09-25)
+
+- **Supabase**: `context-passport` is provisioned on the Free plan in `ap-south-1` (Mumbai).
+- **Local configuration**: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are populated in the git-ignored `.env`. Never copy their values into source files, logs, commits, or this document.
+- **Auth proof**: The health endpoint returns HTTP 200, and both synthetic users authenticate with confirmed email addresses. `npm run gate:supabase` passes.
+- **Regression suite**: `npm test` passes with 8 tests.
+- **Supabase hardening**: `backend/prove_supabase.py` implements an idempotent Admin API fallback (`/auth/v1/admin/users`) using `SUPABASE_SERVICE_ROLE_KEY` to provision and update confirmed synthetic users, avoiding rate limits. `npm run gate:supabase` passes reliably.
+- **Next V0 sequence**: Populate `GEMINI_API_KEY`, run `gate:gemini` and `gate:memory`, then deploy to Render and test `gate:mcp` against the live endpoint.
 
 ---
 
@@ -140,3 +150,7 @@ npm start
 7. **MongoDB Atlas Vector Search Asynchronous Ingestion Delay**:
    - *Problem*: Inserting a document into MongoDB Atlas writes to the collection immediately, but Atlas's underlying Lucene vector indexing pipeline updates asynchronously (typically taking 1-4 seconds). Running `$vectorSearch` immediately after insert causes queries to return empty results.
    - *Fix*: In automated verification gates (`test_atlas_vector_isolation.py`, `test_isolation.py`) and immediate write-then-read tests, poll `$vectorSearch` with a short retry loop (up to 15s) rather than asserting on an instantaneous single query.
+
+8. **Fresh Supabase Projects Can Rate-Limit Synthetic Sign-Ups**:
+   - *Problem*: Creating synthetic users through the public `/auth/v1/signup` endpoint can trigger Supabase's confirmation-email rate limit, especially when using non-routable test domains such as `.local`.
+   - *Fix*: When `SUPABASE_SERVICE_ROLE_KEY` is available, provision synthetic users through `/auth/v1/admin/users` with `email_confirm: true`. This avoids sending test email while preserving email-confirmation requirements for normal public sign-ups.
