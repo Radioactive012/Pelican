@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://radioactive012.github.io/hacknex/sitemap.xml

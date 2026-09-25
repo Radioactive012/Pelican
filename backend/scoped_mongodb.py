@@ -74,23 +74,31 @@ class ScopedMongoDB(MongoDB):
                 collection.delete_one({"_id": 0})
 
             self.index_name = self.configured_index_name
-            if not list(collection.list_search_indexes(name=self.index_name)):
-                collection.create_search_index(
-                    SearchIndexModel(
-                        name=self.index_name,
-                        type="vectorSearch",
-                        definition=self.vector_definition,
+            try:
+                existing_names = [idx.get("name") for idx in collection.list_search_indexes()]
+                if self.index_name not in existing_names:
+                    collection.create_search_index(
+                        SearchIndexModel(
+                            name=self.index_name,
+                            type="vectorSearch",
+                            definition=self.vector_definition,
+                        )
                     )
-                )
+            except Exception as exc:
+                logger.warning("Scoped vector index notice: %s", exc)
 
             self.text_index_name = f"{self.collection_name}_text_search_index_scoped"
-            try:
-                if not list(collection.list_search_indexes(name=self.text_index_name)):
-                    collection.create_search_index(
-                        SearchIndexModel(name=self.text_index_name, definition=self.text_definition)
-                    )
-            except Exception as exc:  # Vector retrieval still works without hybrid text search.
-                logger.warning("Could not create scoped Atlas text index: %s", exc)
+            # Hybrid text search is optional. Atlas Free has a small index
+            # quota, so only create this extra index when explicitly enabled.
+            if os.getenv("ENABLE_ATLAS_TEXT_INDEX", "false").lower() == "true":
+                try:
+                    existing_names = [idx.get("name") for idx in collection.list_search_indexes()]
+                    if self.text_index_name not in existing_names:
+                        collection.create_search_index(
+                            SearchIndexModel(name=self.text_index_name, definition=self.text_definition)
+                        )
+                except Exception as exc:
+                    logger.warning("Could not create optional Atlas text index: %s", exc)
             return collection
         except PyMongoError:
             logger.exception("Could not initialize MongoDB collection or search indexes")

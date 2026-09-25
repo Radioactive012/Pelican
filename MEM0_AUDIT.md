@@ -52,8 +52,9 @@ verified via `backend/test_mem0_history_audit.py`:
    - The past history rows are **never purged**. Replaced text and deleted text both remain
      accessible in plaintext inside the SQLite `history` table.
 
-**Implication for Context Passport**:
-In V0/V1, deletion removes vector retrieval capability, but true forgetting ("hard delete")
-requires explicitly purging the corresponding rows from the SQLite/relational history store.
-This requirement is documented for the V4 GDPR/privacy compliance phase.
-
+**Context Passport safeguard**: `MemoryManager.delete()` now verifies ownership,
+blocks retrieval, calls Mem0's deletion, and removes all `history` rows for that
+memory ID from the configured SQLite database. The purge is verified before the
+API reports success. `delete_all()` also purges history rows for deleted user
+memories. The V3 Forget flow must additionally prevent queued capture events
+from recreating a deleted memory before it can claim complete forgetting.

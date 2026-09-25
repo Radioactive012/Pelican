@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: context-passport-mcp
+    name: context-passport-api
     runtime: python
     plan: free
     buildCommand: python -m pip install -r backend/requirements.lock
@@ -11,13 +11,15 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.15
       - key: BUILD_MARKER
-        value: context-passport-v0-build-001
+        value: context-passport-v3-api-001
       - key: GEMINI_EXTRACTION_MODEL
         value: gemini-2.5-flash
       - key: GEMINI_EMBEDDING_MODEL
         value: models/gemini-embedding-001
       - key: GEMINI_EMBEDDING_DIMS
         value: 1536
+      - key: MEM0_TELEMETRY
+        value: "false"
       - key: MONGODB_DB_NAME
         value: context_passport
       - key: MONGODB_COLLECTION_NAME
@@ -25,6 +27,8 @@ services:
       - key: MONGODB_VECTOR_INDEX_NAME
         value: memories_vector_index_scoped
       - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_PAID_TIER_CONFIRMED
         sync: false
       - key: MONGODB_URI
         sync: false

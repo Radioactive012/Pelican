@@ -1,9 +1,0 @@
-{
-  "name": "dashboard",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Context Passport Web Dashboard scaffold (V0)",
-  "scripts": {
-    "build": "echo \"Dashboard scaffold build placeholder\""
-  }
-}

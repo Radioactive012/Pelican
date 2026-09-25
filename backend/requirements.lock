@@ -30,8 +30,6 @@ iniconfig==2.3.0
 jiter==0.17.0
 jsonschema-specifications==2025.9.1
 jsonschema==4.26.0
-mcp-types==2.2.0
-mcp==2.2.0
 mem0ai==2.2.0
 numpy==2.4.6
 openai==3.19.2

@@ -51,5 +51,6 @@ extension/dist/
 Thumbs.db
 .idea/
 .vscode/
+.gemini/
 *.swp
 *.swo

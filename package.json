@@ -1,13 +1,15 @@
 {
   "name": "context-passport",
   "version": "0.1.0",
-  "description": "Context Passport: cross-assistant persistent memory and context firewall",
+  "description": "Context Passport: opt-in controlled cloud memory for ChatGPT in Brave and Chrome",
   "private": true,
   "workspaces": [
-    "dashboard",
-    "extension"
+    "extension",
+    "v2",
+    "v3"
   ],
   "scripts": {
+    "build": "npm run build:v3",
     "test": "PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests",
     "start": "PYTHONPATH=backend backend/.venv/bin/python backend/server.py",
     "gate:audit": "PYTHONPATH=backend backend/.venv/bin/python backend/inspect_mem0.py",
@@ -16,7 +18,12 @@
     "gate:supabase": "PYTHONPATH=backend backend/.venv/bin/python backend/prove_supabase.py",
     "gate:index": "PYTHONPATH=backend backend/.venv/bin/python backend/verify_atlas_index.py --wait 300",
     "gate:memory": "PYTHONPATH=backend backend/.venv/bin/python backend/test_isolation.py",
-    "gate:mcp": "PYTHONPATH=backend backend/.venv/bin/python backend/verify_mcp.py"
+    "gate:v1": "APP_ENV=test ALLOW_TEST_AUTH=true backend/.venv/bin/python scripts/verify_v1.py",
+    "build:v2": "npm run --prefix v2 build",
+    "test:v2": "npm run --prefix v2 test",
+    "gate:v2": "APP_ENV=test ALLOW_TEST_AUTH=true backend/.venv/bin/python v2/verify_v2.py",
+    "build:v3": "npm run --prefix v3 build",
+    "test:v3": "npm run --prefix v3 typecheck && npm run --prefix v3 test && PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests/test_v3_lifecycle.py -q"
   },
   "devDependencies": {}
 }
