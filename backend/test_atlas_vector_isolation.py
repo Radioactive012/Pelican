@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from pymongo import MongoClient
 from settings import load_settings
@@ -62,7 +63,7 @@ def test_atlas_vector_isolation() -> dict[str, object]:
         # Insert docs
         collection.insert_many([doc_a, doc_b])
 
-        # Query as User A using vector A
+        # Define query pipelines
         pipeline_a = [
             {
                 "$vectorSearch": {
@@ -76,7 +77,15 @@ def test_atlas_vector_isolation() -> dict[str, object]:
             },
             {"$project": {"_id": 1, "text": 1, "user_id": "$payload.user_id"}},
         ]
-        results_a = list(collection.aggregate(pipeline_a))
+
+        # Atlas Vector Search indexes newly inserted documents asynchronously (1-5s).
+        # Poll until the index has ingested the new documents.
+        results_a = []
+        for _ in range(15):
+            results_a = list(collection.aggregate(pipeline_a))
+            if any(r["_id"] == doc_a_id for r in results_a):
+                break
+            time.sleep(1)
 
         # Query as User B using vector A (even querying with A's vector, B should NEVER get A's doc)
         pipeline_b_with_vec_a = [
@@ -108,7 +117,12 @@ def test_atlas_vector_isolation() -> dict[str, object]:
             },
             {"$project": {"_id": 1, "text": 1, "user_id": "$payload.user_id"}},
         ]
-        results_b = list(collection.aggregate(pipeline_b))
+        results_b = []
+        for _ in range(15):
+            results_b = list(collection.aggregate(pipeline_b))
+            if any(r["_id"] == doc_b_id for r in results_b):
+                break
+            time.sleep(1)
 
         # Assertions
         assert any(r["_id"] == doc_a_id for r in results_a), "User A query failed to return doc A"

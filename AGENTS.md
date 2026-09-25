@@ -136,3 +136,7 @@ npm start
 6. **Gemini Embedding Dimension Configuration**:
    - *Problem*: Older tutorials use `text-embedding-004` which was deprecated in early 2026.
    - *Fix*: Use `models/gemini-embedding-001` configured with `output_dimensionality=1536` to match Atlas HNSW vector index dimensions.
+
+7. **MongoDB Atlas Vector Search Asynchronous Ingestion Delay**:
+   - *Problem*: Inserting a document into MongoDB Atlas writes to the collection immediately, but Atlas's underlying Lucene vector indexing pipeline updates asynchronously (typically taking 1-4 seconds). Running `$vectorSearch` immediately after insert causes queries to return empty results.
+   - *Fix*: In automated verification gates (`test_atlas_vector_isolation.py`, `test_isolation.py`) and immediate write-then-read tests, poll `$vectorSearch` with a short retry loop (up to 15s) rather than asserting on an instantaneous single query.

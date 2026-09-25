@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 
 from memory_manager import MemoryManager
@@ -36,8 +37,14 @@ def run_proof() -> dict[str, object]:
         report["stored_embedding_dimensions"] = len(alice_doc["embedding"])
 
         question = "Which data store do I like to use?"
-        alice_search = manager.search(question, alice)
-        bob_search = manager.search(question, bob)
+        alice_search: dict = {}
+        bob_search: dict = {}
+        for _ in range(15):
+            alice_search = manager.search(question, alice)
+            bob_search = manager.search(question, bob)
+            if memory_texts(alice_search) and memory_texts(bob_search):
+                break
+            time.sleep(1)
         alice_text = " ".join(memory_texts(alice_search)).lower()
         bob_text = " ".join(memory_texts(bob_search)).lower()
         assert "postgres" in alice_text and "mongodb" not in alice_text
