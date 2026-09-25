@@ -30,10 +30,10 @@ const SECRET_PATTERNS: Array<{ name: string; pattern: RegExp }> = [
     name: 'Generic API Key Assignment',
     pattern: /(?:\bapi[_-]?key|\bsecret[_-]?key|\baccess[_-]?token|\bauth[_-]?token)\s*[:=]\s*['"]?([a-zA-Z0-9_\-\.]{12,})['"]?/i,
   },
-  // Generic password assignments: e.g. password: xyz, passwd=xyz, pwd: 'xyz' (quoted or unquoted)
+  // Generic password assignments: e.g. password: xyz, password is xyz, passwd=xyz, pwd: 'xyz' (quoted or unquoted)
   {
     name: 'Generic Password Assignment',
-    pattern: /(?:\bpassword|\bpasswd|\bpwd)\s*[:=]\s*['"]?([^\s'"]{6,})['"]?/i,
+    pattern: /(?:\bpassword|\bpasswd|\bpwd)\s*(?:[:=]|\bis\b)\s*['"]?([^\s'"]{6,})['"]?/i,
   },
   // Bearer Token
   { name: 'Bearer Token Assignment', pattern: /\bBearer\s+([a-zA-Z0-9_\-\.]{12,})/i },

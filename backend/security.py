@@ -16,7 +16,7 @@ SECRET_PATTERNS = [
     re.compile(r"github_pat_[0-9a-zA-Z_]{82}"),  # GitHub fine-grained token
     re.compile(r"AKIA[0-9A-Z]{16}"),  # AWS access key
     re.compile(r"(?i)\b(?:api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token)\s*[:=]\s*['\"]?([a-zA-Z0-9_\-\.]{16,})['\"]?"),
-    re.compile(r"(?i)\b(?:password|passwd|pwd)\s*[:=]\s*['\"]?([^\s'\"]{6,})['\"]?"),
+    re.compile(r"(?i)\b(?:password|passwd|pwd)\s*(?:[:=]|\bis\b)\s*['\"]?([^\s'\"]{6,})['\"]?"),
     re.compile(r"(?i)\bBearer\s+([a-zA-Z0-9_\-\.]{20,})"),
     re.compile(r"\b(?:\d{4}[ -]?){3}\d{4}\b"),  # Credit card number
     re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),  # US Social Security Number

@@ -251,6 +251,7 @@ function editCard(card: HTMLElement, initialText: string, save: (value: string) 
   actions.append(actionButton('Save correction', async () => {
     const value = input.value.trim();
     if (!value) throw new Error('Wording cannot be empty.');
+    if (containsSecret(value)) throw new Error('Correction cannot contain credentials or secrets.');
     await save(value);
   }), actionButton('Cancel', async () => { editor.remove(); }));
   editor.append(input, actions);
@@ -269,6 +270,7 @@ function cardStatus(card: HTMLElement): HTMLElement {
 function renderMemoryCard(mem: BackendMemoryDoc): HTMLElement {
   const card = document.createElement('article');
   card.className = 'cp-card';
+  card.setAttribute('data-id', mem.id);
   const top = document.createElement('div');
   top.className = 'cp-card-top';
   for (const [value, tone] of [[mem.classification || 'general', mem.classification === 'sensitive' ? 'error' : 'neutral'], [mem.status || 'active', mem.status === 'blocked' ? 'error' : 'success']]) {
@@ -338,15 +340,23 @@ async function loadPreferences() {
 function renderPreferenceCard(pref: BackendPreferenceDoc): HTMLElement {
   const card = document.createElement('article');
   card.className = 'cp-card';
+  card.setAttribute('data-id', pref.id);
   const top = document.createElement('div');
   top.className = 'cp-card-top';
+  const classBadge = document.createElement('span');
+  classBadge.className = 'cp-badge cp-badge-neutral';
+  classBadge.textContent = 'general';
   const state = document.createElement('span');
-  state.className = `cp-badge ${pref.status === 'active' ? 'cp-badge-success' : 'cp-badge-error'}`;
+  let statusTone = 'neutral';
+  if (pref.status === 'active') statusTone = 'success';
+  else if (pref.status === 'blocked') statusTone = 'error';
+  else if (pref.status === 'insufficient_evidence') statusTone = 'warning';
+  state.className = `cp-badge cp-badge-${statusTone}`;
   state.textContent = pref.status || 'active';
   const evidenceCount = document.createElement('span');
   evidenceCount.className = 'cp-badge cp-badge-neutral';
   evidenceCount.textContent = pref.locked ? 'Your wording · locked' : `${pref.evidence_count || 0} observations`;
-  top.append(state, evidenceCount);
+  top.append(classBadge, state, evidenceCount);
   const wording = document.createElement('div');
   wording.className = 'cp-card-text';
   wording.textContent = pref.preference_text;

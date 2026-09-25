@@ -465,15 +465,28 @@ class MemoryManager:
             logger.warning("Atlas vector search notice (%s)", exc)
             candidates = []
 
-        # Atlas indexes new writes asynchronously. Even when older candidates
-        # exist, include direct-scored recent documents so a fresh fact is not
-        # invisible during the first cross-site recall.
+        # Atlas indexes new writes and updates asynchronously. Even when older candidates
+        # exist, include direct-scored recent documents (created or updated) so a fresh or
+        # corrected fact is immediately available during recall.
         direct_query: Dict[str, Any] = {"payload.user_id": user_id, "payload.status": "active"}
         if candidates:
-            direct_query["payload.created_at"] = {
-                "$gte": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
-            }
+            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+            direct_query["payload.created_at"] = {"$gte": cutoff}
         user_docs = list(self.collection.find(direct_query))
+
+        if candidates:
+            try:
+                updated_docs = list(self.collection.find({
+                    "payload.user_id": user_id,
+                    "payload.status": "active",
+                    "payload.updated_at": {"$gte": cutoff},
+                }))
+                existing_ids = {str(d["_id"]) for d in user_docs}
+                for doc in updated_docs:
+                    if str(doc["_id"]) not in existing_ids:
+                        user_docs.append(doc)
+            except Exception:
+                pass
 
         # Direct-scored recent documents must strictly match the active embedding model space
         active_model = self.active_embedding_model
@@ -628,9 +641,15 @@ class MemoryManager:
             if memory_id in allowed_ids:
                 continue
             if self.memory is not None:
-                self.memory.delete(memory_id)
-                self._purge_history(memory_id)
-            else:
+                try:
+                    self.memory.delete(memory_id)
+                except Exception:
+                    pass
+                try:
+                    self._purge_history(memory_id)
+                except Exception:
+                    pass
+            if hasattr(self, "collection") and self.collection is not None:
                 self.collection.delete_one({"_id": doc["_id"], "payload.user_id": user_id})
 
     def _assert_owner(self, memory_id: str, user_id: str) -> Dict[str, Any]:
@@ -656,26 +675,18 @@ class MemoryManager:
             raise ValueError("Cannot update memory to contain secrets")
 
         now_iso = datetime.now(timezone.utc).isoformat()
+        new_vector = self.embed_text(text)
+        new_excerpt = redacted_evidence_excerpt(text, sensitive=classification == "sensitive")
+
         if hasattr(self, "memory") and self.memory is not None:
-            self.memory.update(memory_id, text=text)
-            if hasattr(self, "collection") and self.collection is not None:
-                self.collection.update_one(
-                    {"_id": memory_id},
-                    {
-                    "$set": {
-                            "payload.data": text,
-                            "payload.classification": classification,
-                            "payload.embedding_model": self.active_embedding_model,
-                            "payload.updated_at": now_iso,
-                        }
-                    },
-                )
-            return {"id": memory_id, "text": text, "memory": text, "classification": classification}
+            try:
+                self.memory.update(memory_id, text=text)
+            except Exception as exc:
+                logger.warning("Mem0 update notice: %s", exc)
 
         if hasattr(self, "collection") and self.collection is not None:
-            new_vector = self.embed_text(text)
             self.collection.update_one(
-                {"_id": memory_id},
+                {"_id": memory_id, "payload.user_id": user_id},
                 {
                     "$set": {
                         "text": text,
@@ -684,6 +695,7 @@ class MemoryManager:
                         "payload.classification": classification,
                         "payload.embedding_model": self.active_embedding_model,
                         "payload.updated_at": now_iso,
+                        "payload.support_excerpt": new_excerpt,
                     }
                 },
             )
@@ -694,7 +706,7 @@ class MemoryManager:
         self._assert_owner(memory_id, user_id)
         if hasattr(self, "collection") and self.collection is not None:
             res = self.collection.update_one(
-                {"_id": memory_id},
+                {"_id": memory_id, "payload.user_id": user_id},
                 {"$set": {"payload.status": "blocked", "payload.blocked_at": datetime.now(timezone.utc).isoformat()}},
             )
             return res.modified_count > 0
@@ -723,11 +735,19 @@ class MemoryManager:
             # Block recall first. Mem0 appends a DELETE history row but retains
             # plaintext ADD/UPDATE rows, so purge those rows after deletion.
             self.block(memory_id, user_id)
-            self.memory.delete(memory_id)
-            self._purge_history(memory_id)
+            try:
+                self.memory.delete(memory_id)
+            except Exception:
+                pass
+            try:
+                self._purge_history(memory_id)
+            except Exception:
+                pass
+            if hasattr(self, "collection") and self.collection is not None:
+                self.collection.delete_one({"_id": memory_id, "payload.user_id": user_id})
             return True
         if hasattr(self, "collection") and self.collection is not None:
-            self.collection.delete_one({"_id": memory_id})
+            self.collection.delete_one({"_id": memory_id, "payload.user_id": user_id})
         return True
 
     def _purge_history(self, memory_id: str) -> None:
