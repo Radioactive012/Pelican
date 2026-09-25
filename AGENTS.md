@@ -60,7 +60,7 @@ Context Passport is a **self-improving, privacy-first browser memory** product.
 | Step 6 | Recall, Consent & Injection | Use Memory, up-to-3 general, sensitive consent modal, composer replacement, fallback UI | Passed |
 
 | Step 7 | Vault Controls & Lifecycle | Card rendering, locked preference corrections, evidence removal, block/forget lifecycles | Passed |
-| Step 8 | Local Runtime & Reliability | `127.0.0.1:8000` loopback, token expiry, rate limits, restart survival, no public binding | Pending |
+| Step 8 | Local Runtime & Reliability | `127.0.0.1:8000` loopback, token expiry, rate limits, restart survival, no public binding | Passed |
 | Step 9 | UX, Packaging & Written Setup | Extension packaging in `v3/dist`, clear empty/error states, reproducible setup documentation | Pending |
 | Step 10 | Connect Models & Routing | Real OpenRouter & Jev keys in backend env, 30–50 benchmark cases, spending cap, quality validation | Pending |
 | Step 11 | Real Browser Journey | Live ChatGPT, Claude, Gemini web tests in Chrome/Brave; cross-site recall; privacy modals | LIVE PENDING |

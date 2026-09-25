@@ -17,9 +17,12 @@ import hashlib
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from importlib.metadata import version
+import threading
 from typing import Any, Dict, List, Optional, Literal
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -28,32 +31,147 @@ from starlette.responses import JSONResponse
 from auth import AuthenticatedUser, get_current_user, acquire_synthetic_user_token
 from memory_manager import MemoryManager
 from preference_engine import PreferenceEngine, is_extension_injected_context
+from providers import (
+    ProviderError,
+    ProviderTimeoutError,
+    ProviderRateLimitError,
+    SpendingCapExceededError,
+    ProviderOutageError,
+    InvalidProviderResponseError,
+    MissingConfigurationError,
+)
 from security import classify_text, contains_secret
 
 logger = logging.getLogger(__name__)
 
 BUILD_MARKER = os.getenv("BUILD_MARKER", "context-passport-v3-api-001")
-MAX_REQUEST_BYTES = 65_536  # 64 KB limit
-RATE_LIMIT_WINDOW = 60.0    # 60-second window
-RATE_LIMIT_MAX_REQUESTS = 60 # 60 requests per minute
+MAX_REQUEST_BYTES = int(os.getenv("MAX_REQUEST_BYTES", "65536"))  # 64 KB limit
+RATE_LIMIT_WINDOW = float(os.getenv("RATE_LIMIT_WINDOW", "60.0"))    # 60-second window
+RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "60")) # 60 requests per minute
+
+# Module-level singletons (lazy loaded)
+memory_manager: Optional[MemoryManager] = None
+preference_engine: Optional[PreferenceEngine] = None
+
+# Rate limiter state: key -> deque of timestamps (thread-safe)
+_rate_limit_lock = threading.Lock()
+_rate_limit_records: dict[str, collections.deque] = collections.defaultdict(collections.deque)
+
+
+def reset_rate_limits() -> None:
+    """Resets rate limit state for tests."""
+    with _rate_limit_lock:
+        _rate_limit_records.clear()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: ensure strictly loopback host configuration
+    host = os.getenv("HOST", "127.0.0.1").strip()
+    if host in ("0.0.0.0", "", "::", "0:0:0:0:0:0:0:0"):
+        logger.warning("Rejecting public host binding %s; enforcing loopback 127.0.0.1", host)
+        os.environ["HOST"] = "127.0.0.1"
+    logger.info("Context Passport API initialized on loopback %s", os.getenv("HOST", "127.0.0.1"))
+    yield
+    # Shutdown: clean up singleton connections and reset in-memory state
+    global memory_manager, preference_engine
+    if preference_engine is not None and hasattr(preference_engine, "client") and preference_engine.client:
+        try:
+            preference_engine.client.close()
+        except Exception:
+            pass
+    if memory_manager is not None and hasattr(memory_manager, "collection") and memory_manager.collection is not None:
+        try:
+            memory_manager.collection.database.client.close()
+        except Exception:
+            pass
+    memory_manager = None
+    preference_engine = None
+    reset_rate_limits()
+    logger.info("Context Passport API shutdown complete")
+
 
 app = FastAPI(
     title="Context Passport API",
     description="Privacy-first browser memory backend and self-improvement engine.",
     version="3.0.0",
+    lifespan=lifespan,
 )
 
-# Enable CORS for browser extension and localhost testing
+# Explicit CORS configuration for the 3 target AI sites, extension, and localhost
+ALLOWED_ORIGINS = [
+    "https://chatgpt.com",
+    "https://claude.ai",
+    "https://gemini.google.com",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost",
+    "http://127.0.0.1",
+]
+ALLOWED_ORIGIN_REGEX = (
+    r"^(chrome-extension://[a-z0-9]+"
+    r"|https://([a-zA-Z0-9-]+\.)*(chatgpt\.com|claude\.ai|gemini\.google\.com)"
+    r"|http://(localhost|127\.0\.0\.1)(:\d+)?)$"
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
-# Rate limiter state: key -> deque of timestamps
-_rate_limit_records: dict[str, collections.deque] = collections.defaultdict(collections.deque)
+
+# Exception Handlers for clean provider error messages without leaking secrets
+@app.exception_handler(ProviderTimeoutError)
+async def provider_timeout_handler(request: Request, exc: ProviderTimeoutError):
+    return JSONResponse(
+        status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+        content={"detail": "Model provider request timed out. Please retry."},
+    )
+
+
+@app.exception_handler(ProviderRateLimitError)
+async def provider_rate_limit_handler(request: Request, exc: ProviderRateLimitError):
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={"detail": "Model provider rate limit exceeded. Please try again shortly."},
+        headers={"Retry-After": "30"},
+    )
+
+
+@app.exception_handler(SpendingCapExceededError)
+async def spending_cap_handler(request: Request, exc: SpendingCapExceededError):
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(ProviderOutageError)
+async def provider_outage_handler(request: Request, exc: ProviderOutageError):
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": "Model provider service unavailable. Please retry later."},
+    )
+
+
+@app.exception_handler(InvalidProviderResponseError)
+async def provider_invalid_resp_handler(request: Request, exc: InvalidProviderResponseError):
+    return JSONResponse(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        content={"detail": "Model provider returned an invalid response."},
+    )
+
+
+@app.exception_handler(MissingConfigurationError)
+async def provider_missing_config_handler(request: Request, exc: MissingConfigurationError):
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": str(exc)},
+    )
 
 
 @app.middleware("http")
@@ -73,25 +191,39 @@ async def rate_limit_and_size_middleware(request: Request, call_next):
     # 2. Rate limiting (skip health/ready)
     path = request.url.path
     if path not in ("/health", "/ready"):
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = request.client.host if request.client else "127.0.0.1"
         auth_header = request.headers.get("authorization", "")
-        # Use token fingerprint or IP as bucket key
         bucket_key = auth_header[-16:] if len(auth_header) > 16 else client_ip
 
         now = time.time()
-        timestamps = _rate_limit_records[bucket_key]
-        # Purge older than window
-        while timestamps and now - timestamps[0] > RATE_LIMIT_WINDOW:
-            timestamps.popleft()
+        max_requests = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", str(RATE_LIMIT_MAX_REQUESTS)))
+        window = float(os.getenv("RATE_LIMIT_WINDOW", str(RATE_LIMIT_WINDOW)))
 
-        if len(timestamps) >= RATE_LIMIT_MAX_REQUESTS:
-            logger.warning("Rate limit exceeded for %s", bucket_key)
-            return JSONResponse(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                content={"detail": "Too many requests. Please slow down."},
-                headers={"Retry-After": "60"},
-            )
-        timestamps.append(now)
+        with _rate_limit_lock:
+            timestamps = _rate_limit_records[bucket_key]
+            while timestamps and now - timestamps[0] > window:
+                timestamps.popleft()
+
+            if len(timestamps) >= max_requests:
+                retry_after = max(1, int(window - (now - timestamps[0])))
+                logger.warning("Rate limit exceeded for %s", bucket_key)
+                return JSONResponse(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    content={"detail": f"Rate limit exceeded. Maximum {max_requests} requests per minute."},
+                    headers={
+                        "Retry-After": str(retry_after),
+                        "X-RateLimit-Limit": str(max_requests),
+                        "X-RateLimit-Remaining": "0",
+                        "X-RateLimit-Reset": str(int(timestamps[0] + window)),
+                    },
+                )
+            timestamps.append(now)
+            remaining = max(0, max_requests - len(timestamps))
+
+        response = await call_next(request)
+        response.headers["X-RateLimit-Limit"] = str(RATE_LIMIT_MAX_REQUESTS)
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        return response
 
     return await call_next(request)
 
@@ -216,7 +348,7 @@ async def health() -> dict[str, str]:
 
 
 @app.get("/ready")
-async def ready() -> JSONResponse:
+async def ready(request: Request) -> JSONResponse:
     provider = get_active_llm_provider()
     required = [
         "MONGODB_URI",
@@ -240,9 +372,74 @@ async def ready() -> JSONResponse:
         if not os.getenv("JEV_API_KEY"):
             missing.append("JEV_API_KEY")
 
+    if missing:
+        return JSONResponse(
+            {"status": "configuration_required", "missing": missing},
+            status_code=503,
+        )
+
+    # In test environment, skip live network checks unless explicitly requested via query param
+    check_connectivity = (
+        request.query_params.get("check_connectivity", "").lower() == "true"
+        or os.getenv("APP_ENV", "production").lower() != "test"
+    )
+    if not check_connectivity:
+        return JSONResponse(
+            {"status": "ready", "missing": []},
+            status_code=200,
+        )
+
+    # External dependency connectivity checks
+    disconnected: list[str] = []
+
+    # 1. MongoDB Atlas connectivity check
+    try:
+        engine = get_pref_engine()
+        if hasattr(engine, "client") and engine.client is not None:
+            engine.client.admin.command("ping")
+        else:
+            from pymongo import MongoClient
+            c = MongoClient(os.getenv("MONGODB_URI"), serverSelectionTimeoutMS=2000)
+            c.admin.command("ping")
+            c.close()
+    except Exception as exc:
+        logger.warning("MongoDB Atlas ping failed in /ready: %s", exc)
+        disconnected.append("mongodb")
+
+    # 2. Supabase Auth connectivity check
+    supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    if supabase_url and anon_key:
+        try:
+            s_resp = httpx.get(
+                f"{supabase_url}/auth/v1/settings",
+                headers={"apikey": anon_key},
+                timeout=2.0,
+            )
+            if not (s_resp.is_success or s_resp.status_code in (200, 401, 403)):
+                disconnected.append("supabase")
+        except Exception as exc:
+            logger.warning("Supabase ping failed in /ready: %s", exc)
+            disconnected.append("supabase")
+
+    if disconnected:
+        return JSONResponse(
+            {
+                "status": "service_unavailable",
+                "disconnected": disconnected,
+                "detail": f"Service(s) unreachable: {', '.join(disconnected)}",
+            },
+            status_code=503,
+        )
+
     return JSONResponse(
-        {"status": "ready" if not missing else "configuration_required", "missing": missing},
-        status_code=200 if not missing else 503,
+        {
+            "status": "ready",
+            "mongodb": "connected",
+            "supabase": "connected",
+            "provider": provider,
+        },
+        status_code=200,
     )
 
 
@@ -337,6 +534,10 @@ async def ingest_message(
                     "source_site": req.source_site,
                 },
             )
+        except ProviderTimeoutError as exc:
+            logger.error("Provider timeout during memory save for user %s", user.user_id)
+            engine.mark_event_failed(user.user_id, message_hash, "ProviderTimeoutError", event_id=req.event_id)
+            raise HTTPException(status_code=504, detail="Model provider request timed out. Please retry.") from exc
         except Exception as exc:
             logger.error("Memory save failed for user %s (%s)", user.user_id, type(exc).__name__)
             engine.mark_event_failed(user.user_id, message_hash, type(exc).__name__, event_id=req.event_id)
@@ -512,4 +713,10 @@ async def delete_memory(
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host=os.getenv("HOST", "0.0.0.0"), port=int(os.getenv("PORT", "8000")))
+    host = os.getenv("HOST", "127.0.0.1").strip()
+    if host in ("0.0.0.0", "", "::", "0:0:0:0:0:0:0:0"):
+        logger.warning("Public interface binding rejected for security; binding to 127.0.0.1")
+        host = "127.0.0.1"
+    port = int(os.getenv("PORT", "8000"))
+    logger.info("Starting Context Passport API on %s:%d", host, port)
+    uvicorn.run(app, host=host, port=port)

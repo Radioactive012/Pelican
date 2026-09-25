@@ -758,7 +758,7 @@ class MemoryManager:
             if isinstance(self.memory, Memory):
                 raise RuntimeError("Mem0 history database is unavailable for purge")
             return  # Lightweight fakes used by ownership unit tests have no history.
-        history_db = self.memory.db
+        history_db = self.memory.db 
         with history_db._lock:
             history_db.connection.execute("DELETE FROM history WHERE memory_id = ?", (memory_id,))
             history_db.connection.commit()

@@ -46,15 +46,12 @@ def check() -> dict[str, dict[str, object]]:
     else:
         result["supabase"] = {"ok": False, "error": "not_configured"}
 
-    render_url = os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
-    if render_url:
-        try:
-            response = httpx.get(f"{render_url}/health", timeout=15, follow_redirects=True)
-            result["render"] = {"ok": response.is_success, "status": response.status_code}
-        except Exception as exc:
-            result["render"] = {"ok": False, "error": type(exc).__name__}
-    else:
-        result["render"] = {"ok": False, "error": "not_configured"}
+    loopback_url = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
+    try:
+        response = httpx.get(f"{loopback_url}/health", timeout=2.0)
+        result["local_loopback"] = {"ok": response.is_success, "status": response.status_code}
+    except Exception as exc:
+        result["local_loopback"] = {"ok": False, "error": type(exc).__name__}
 
     return result
 

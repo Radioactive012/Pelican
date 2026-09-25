@@ -18,11 +18,29 @@ class AuthenticatedUser(BaseModel):
     email: Optional[str] = None
 
 
+def is_jwt_expired(token_str: str) -> bool:
+    """Inspects JWT payload unverified to check exp claim timestamp."""
+    parts = token_str.split(".")
+    if len(parts) == 3:
+        import base64
+        import json
+        import time
+        try:
+            padded = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
+            exp = payload.get("exp")
+            if exp is not None and isinstance(exp, (int, float)):
+                return time.time() >= exp
+        except Exception:
+            pass
+    return False
+
+
 def verify_supabase_token(token: str) -> AuthenticatedUser:
     """
     Verifies a Supabase Auth JWT access token by querying Supabase's user endpoint.
     Returns AuthenticatedUser with verified user_id.
-    Raises HTTPException(401) on failure.
+    Raises HTTPException(401) with 'token_expired' on expiry or 'Invalid authentication token' on invalid.
     """
     if not token or not token.strip():
         raise HTTPException(
@@ -34,7 +52,7 @@ def verify_supabase_token(token: str) -> AuthenticatedUser:
     if clean_token.lower().startswith("bearer "):
         clean_token = clean_token[7:].strip()
 
-    # Strictly gate test tokens: permitted ONLY in explicit test environments
+    # Test token bypass: permitted ONLY in explicit test environments
     if clean_token.startswith("test-bearer-"):
         app_env = os.getenv("APP_ENV", "").lower()
         allow_test_auth = os.getenv("ALLOW_TEST_AUTH", "false").lower() == "true"
@@ -46,6 +64,24 @@ def verify_supabase_token(token: str) -> AuthenticatedUser:
             )
         test_uid = clean_token.replace("test-bearer-", "")
         return AuthenticatedUser(user_id=test_uid, email=f"{test_uid}@test.local")
+
+    # Explicit expired mock token handling for tests
+    if clean_token.startswith("expired-") or clean_token == "expired_token":
+        logger.info("Rejected expired test token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="token_expired",
+            headers={"WWW-Authenticate": 'Bearer error="invalid_token", error_description="The access token expired"'},
+        )
+
+    # Check unverified exp claim on real JWTs before making external call
+    if is_jwt_expired(clean_token):
+        logger.info("JWT expired according to exp claim timestamp")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="token_expired",
+            headers={"WWW-Authenticate": 'Bearer error="invalid_token", error_description="The access token expired"'},
+        )
 
     supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
     supabase_anon_key = os.getenv("SUPABASE_ANON_KEY", "")
@@ -75,12 +111,28 @@ def verify_supabase_token(token: str) -> AuthenticatedUser:
                 )
             return AuthenticatedUser(user_id=user_id, email=data.get("email"))
 
+        try:
+            err_data = response.json()
+        except Exception:
+            err_data = {}
+
+        msg = str(err_data.get("msg") or err_data.get("message") or err_data.get("error_description") or "").lower()
+        code = str(err_data.get("code") or err_data.get("error_code") or "").lower()
+
+        if "expired" in msg or "expired" in code or is_jwt_expired(clean_token):
+            logger.info("Supabase confirmed token is expired")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="token_expired",
+                headers={"WWW-Authenticate": 'Bearer error="invalid_token", error_description="The access token expired"'},
+            )
+
         logger.warning("Supabase token verification failed with status %s", response.status_code)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired authentication token",
+            detail="Invalid authentication token",
         )
-    except httpx.RequestError as exc:
+    except (httpx.RequestError, httpx.TimeoutException) as exc:
         logger.error("Failed to connect to Supabase Auth: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

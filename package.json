@@ -11,7 +11,7 @@
   "scripts": {
     "build": "npm run build:v3",
     "test": "PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests",
-    "start": "PYTHONPATH=backend backend/.venv/bin/python backend/server.py",
+    "start": "HOST=127.0.0.1 PORT=8000 PYTHONPATH=backend backend/.venv/bin/python backend/server.py",
     "gate:audit": "PYTHONPATH=backend backend/.venv/bin/python backend/inspect_mem0.py",
     "gate:history": "PYTHONPATH=backend backend/.venv/bin/python backend/test_mem0_history_audit.py",
     "gate:gemini": "PYTHONPATH=backend backend/.venv/bin/python backend/prove_gemini.py",
@@ -23,7 +23,7 @@
     "test:v2": "npm run --prefix v2 test",
     "gate:v2": "APP_ENV=test ALLOW_TEST_AUTH=true backend/.venv/bin/python v2/verify_v2.py",
     "build:v3": "npm run --prefix v3 build",
-    "test:v3": "npm run --prefix v3 typecheck && npm run --prefix v3 test && PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests/test_v3_lifecycle.py backend/tests/test_step4_ingest_privacy_preferences.py backend/tests/test_step7_vault_lifecycle.py -q"
+    "test:v3": "npm run --prefix v3 typecheck && npm run --prefix v3 test && PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests/test_v3_lifecycle.py backend/tests/test_step4_ingest_privacy_preferences.py backend/tests/test_step7_vault_lifecycle.py backend/tests/test_step8_local_runtime_reliability.py -q"
   },
   "devDependencies": {}
 }

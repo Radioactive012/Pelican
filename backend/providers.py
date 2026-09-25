@@ -600,12 +600,20 @@ class MockExtractor(FactExtractor):
 class MockEmbedder(Embedder):
     """Deterministic mock embedder returning unit-normalized 1536d vectors."""
 
-    def __init__(self, dimensions: int = 1536):
+    def __init__(self, dimensions: int = 1536, fail_mode: Optional[str] = None):
         self.dimensions = dimensions
+        self.fail_mode = fail_mode
         self.call_count = 0
 
     def embed(self, text: str) -> List[float]:
         self.call_count += 1
+        if self.fail_mode == "timeout":
+            raise ProviderTimeoutError("Mock embedder call timed out after 30.0s")
+        elif self.fail_mode == "rate_limit":
+            raise ProviderRateLimitError("Mock embedder rate limit exceeded (HTTP 429)")
+        elif self.fail_mode == "outage":
+            raise ProviderOutageError("Mock embedder 503 outage")
+
         # Use existing deterministic embedding generator
         from memory_manager import generate_deterministic_embedding
         return generate_deterministic_embedding(text, self.dimensions)

@@ -53,6 +53,10 @@ class Settings:
     mongodb_vector_index_name: str
     history_db_path: str
 
+    # Network & Localhost Runtime
+    host: str = "127.0.0.1"
+    port: int = 8000
+
 
 def load_settings(
     require_gemini: Optional[bool] = None,
@@ -61,6 +65,21 @@ def load_settings(
     history_path = Path(os.getenv("MEM0_HISTORY_DB_PATH", "backend/mem0_history.db"))
     if not history_path.is_absolute():
         history_path = ROOT_DIR / history_path
+
+    # Ensure parent directory exists with secure permissions (0700)
+    try:
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        if os.name != "nt":
+            os.chmod(history_path.parent, 0o700)
+    except Exception:
+        pass
+
+    # Ensure SQLite history database file has secure permissions (0600)
+    if history_path.exists() and os.name != "nt":
+        try:
+            os.chmod(history_path, 0o600)
+        except Exception:
+            pass
 
     llm_provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
     embedding_provider = os.getenv("EMBEDDING_PROVIDER", "openrouter").lower()
@@ -83,6 +102,14 @@ def load_settings(
     jev_key = os.getenv("JEV_API_KEY", "").strip()
     if require_model_keys and enable_jev and not jev_key:
         raise RuntimeError("Missing required environment variable: JEV_API_KEY")
+
+    raw_host = os.getenv("HOST", "127.0.0.1").strip()
+    # Reject 0.0.0.0 and wildcard binding; strictly enforce loopback
+    if raw_host in ("0.0.0.0", "", "::", "0:0:0:0:0:0:0:0"):
+        host = "127.0.0.1"
+    else:
+        host = raw_host
+    port = int(os.getenv("PORT", "8000"))
 
     return Settings(
         llm_provider=llm_provider,
@@ -108,4 +135,6 @@ def load_settings(
         mongodb_collection_name=os.getenv("MONGODB_COLLECTION_NAME", "memories"),
         mongodb_vector_index_name=os.getenv("MONGODB_VECTOR_INDEX_NAME", "memories_vector_index_scoped"),
         history_db_path=str(history_path),
+        host=host,
+        port=port,
     )

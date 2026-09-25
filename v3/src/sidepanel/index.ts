@@ -83,7 +83,7 @@ async function initConnectionStatus() {
     badge.textContent = 'Connected';
     badge.className = 'cp-badge cp-badge-success';
   } catch (err: any) {
-    badge.textContent = /HTTP 401|HTTP 403/.test(err?.message || '') ? 'Sign in again' : 'Backend error';
+    badge.textContent = /HTTP 401|HTTP 403|token_expired/i.test(err?.message || '') ? 'Sign in again' : 'Backend error';
     badge.className = 'cp-badge cp-badge-error';
   }
 }
@@ -124,7 +124,7 @@ async function initSettings(settings: any) {
     });
   }
 
-  if (urlInput) urlInput.value = settings.backend_url || 'http://localhost:8000';
+  if (urlInput) urlInput.value = settings.backend_url || 'http://127.0.0.1:8000';
   if (tokenInput) tokenInput.value = settings.auth_token || '';
   if (emailInput) emailInput.value = settings.user_email || '';
 
