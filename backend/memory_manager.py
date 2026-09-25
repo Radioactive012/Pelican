@@ -58,55 +58,60 @@ def generate_deterministic_embedding(text: str, dims: int = 1536) -> List[float]
     return vector
 
 
-def build_mem0_config(settings: Settings) -> dict[str, Any]:
+def build_mem0_config(settings: Any) -> dict[str, Any]:
+    dims = getattr(settings, "embedding_dims", getattr(settings, "gemini_embedding_dims", 1536))
     config: dict[str, Any] = {
         "version": "v1.1",
-        "history_db_path": settings.history_db_path,
+        "history_db_path": getattr(settings, "history_db_path", "history.db"),
         "vector_store": {
             "provider": "mongodb",
             "config": {
-                "mongo_uri": settings.mongodb_uri,
-                "db_name": settings.mongodb_db_name,
-                "collection_name": settings.mongodb_collection_name,
-                "embedding_model_dims": settings.embedding_dims,
+                "mongo_uri": getattr(settings, "mongodb_uri", "mongodb://localhost:27017"),
+                "db_name": getattr(settings, "mongodb_db_name", "mem0"),
+                "collection_name": getattr(settings, "mongodb_collection_name", "memories"),
+                "embedding_model_dims": dims,
             },
         },
     }
 
-    if settings.llm_provider == "openrouter" and settings.openrouter_api_key:
+    provider = getattr(settings, "llm_provider", "openrouter")
+    openrouter_api_key = getattr(settings, "openrouter_api_key", None)
+    gemini_api_key = getattr(settings, "gemini_api_key", None)
+
+    if provider == "openrouter" and openrouter_api_key:
         config["llm"] = {
             "provider": "openai",
             "config": {
-                "api_key": settings.openrouter_api_key,
-                "model": settings.extraction_primary_model,
-                "openai_base_url": settings.openrouter_base_url,
+                "api_key": openrouter_api_key,
+                "model": getattr(settings, "extraction_primary_model", "z-ai/glm-5.3-flash"),
+                "openai_base_url": getattr(settings, "openrouter_base_url", "https://openrouter.ai/api/v1"),
                 "temperature": 0,
             },
         }
         config["embedder"] = {
             "provider": "openai",
             "config": {
-                "api_key": settings.openrouter_api_key,
-                "model": settings.embedding_model,
-                "openai_base_url": settings.openrouter_base_url,
-                "embedding_dims": settings.embedding_dims,
+                "api_key": openrouter_api_key,
+                "model": getattr(settings, "embedding_model", "openai/text-embedding-3-small"),
+                "openai_base_url": getattr(settings, "openrouter_base_url", "https://openrouter.ai/api/v1"),
+                "embedding_dims": dims,
             },
         }
-    elif settings.gemini_api_key:
+    elif gemini_api_key:
         config["llm"] = {
             "provider": "gemini",
             "config": {
-                "api_key": settings.gemini_api_key,
-                "model": settings.gemini_extraction_model,
+                "api_key": gemini_api_key,
+                "model": getattr(settings, "gemini_extraction_model", "gemini-2.5-flash"),
                 "temperature": 0,
             },
         }
         config["embedder"] = {
             "provider": "gemini",
             "config": {
-                "api_key": settings.gemini_api_key,
-                "model": settings.gemini_embedding_model,
-                "embedding_dims": settings.gemini_embedding_dims,
+                "api_key": gemini_api_key,
+                "model": getattr(settings, "gemini_embedding_model", "models/gemini-embedding-001"),
+                "embedding_dims": getattr(settings, "gemini_embedding_dims", dims),
             },
         }
     return config
@@ -126,28 +131,29 @@ class MemoryManager:
         self.forgotten_sources = self.db["forgotten_memory_sources"]
 
         # Enforce required keys in real production mode
-        has_openrouter = bool(self.settings.openrouter_api_key)
-        has_gemini = bool(self.settings.gemini_api_key)
+        has_openrouter = bool(getattr(self.settings, "openrouter_api_key", None))
+        has_gemini = bool(getattr(self.settings, "gemini_api_key", None))
+        provider = getattr(self.settings, "llm_provider", "openrouter")
         if not self._allow_offline:
-            if self.settings.llm_provider == "openrouter" and not has_openrouter:
+            if provider == "openrouter" and not has_openrouter:
                 raise RuntimeError("OPENROUTER_API_KEY is required in real mode. Silent fallback embeddings are disabled.")
-            elif self.settings.llm_provider == "gemini" and not has_gemini:
+            elif provider == "gemini" and not has_gemini:
                 raise RuntimeError("GEMINI_API_KEY is required in real V1 mode. Silent fallback embeddings are disabled.")
 
         self._genai_client = None
         self._openrouter_embedder = None
 
-        if self.settings.llm_provider == "openrouter" and has_openrouter:
+        if provider == "openrouter" and has_openrouter:
             self.memory = Memory.from_config(build_mem0_config(self.settings))
             from providers import OpenRouterEmbedder
             self._openrouter_embedder = OpenRouterEmbedder(
-                api_key=self.settings.openrouter_api_key,
-                base_url=self.settings.openrouter_base_url,
-                model=self.settings.embedding_model,
-                dimensions=self.settings.embedding_dims,
-                timeout_seconds=self.settings.provider_timeout_seconds,
+                api_key=getattr(self.settings, "openrouter_api_key", None),
+                base_url=getattr(self.settings, "openrouter_base_url", "https://openrouter.ai/api/v1"),
+                model=self.active_embedding_model,
+                dimensions=getattr(self.settings, "embedding_dims", 1536),
+                timeout_seconds=getattr(self.settings, "provider_timeout_seconds", 30.0),
             )
-        elif self.settings.gemini_api_key:
+        elif has_gemini:
             self.memory = Memory.from_config(build_mem0_config(self.settings))
             # Mem0 creates SDK clients without request deadlines. Reuse one
             # bounded client so a stalled provider cannot hang capture forever.
@@ -165,6 +171,16 @@ class MemoryManager:
             self.memory.embedding_model.client = self._genai_client
         else:
             self.memory = None
+
+    @property
+    def active_embedding_model(self) -> str | None:
+        if hasattr(self, "settings") and self.settings is not None:
+            return getattr(
+                self.settings,
+                "embedding_model",
+                getattr(self.settings, "gemini_embedding_model", None),
+            )
+        return None
 
     def embed_text(self, text: str) -> List[float]:
         """
@@ -245,16 +261,17 @@ class MemoryManager:
                     for doc in prior
                 ]}
 
-        # If Mem0 with Gemini is fully available and no custom offline override
-        if self.memory and self.settings.gemini_api_key:
+        # If Mem0 is available
+        if self.memory:
             mem_meta = {
                 "classification": classification,
                 "status": "active",
+                "embedding_model": self.active_embedding_model,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 **(metadata or {}),
             }
             res = self.memory.add(text, user_id=user_id, metadata=mem_meta)
-            # Ensure classification, memory text, and status are stored in collection doc
+            # Ensure classification, memory text, embedding_model, and status are stored in collection doc
             for item in res.get("results", []):
                 m_id = item.get("id")
                 if m_id:
@@ -265,6 +282,7 @@ class MemoryManager:
                                 "payload.classification": classification,
                                 "payload.status": "active",
                                 "payload.data": item.get("memory", text),
+                                "payload.embedding_model": self.active_embedding_model,
                                 "payload.support_excerpt": redacted_evidence_excerpt(
                                     item.get("memory", text), sensitive=classification == "sensitive"
                                 ),
@@ -293,6 +311,7 @@ class MemoryManager:
                 "data": text,
                 "classification": classification,
                 "status": "active",
+                "embedding_model": self.active_embedding_model,
                 "created_at": now_iso,
                 "support_excerpt": redacted_evidence_excerpt(text, sensitive=classification == "sensitive"),
                 **(metadata or {}),
@@ -359,6 +378,16 @@ class MemoryManager:
                 "$gte": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
             }
         user_docs = list(self.collection.find(direct_query))
+
+        # Direct-scored recent documents must strictly match the active embedding model space
+        active_model = self.active_embedding_model
+        if active_model is not None:
+            user_docs = [
+                d for d in user_docs
+                if d.get("payload", {}).get("embedding_model") == active_model
+                or (not d.get("payload", {}).get("embedding_model") and active_model == "models/gemini-embedding-001")
+            ]
+
         combined = {str(doc["_id"]): doc for doc in candidates}
         query_norm = math.sqrt(sum(value * value for value in query_vector))
         for doc in user_docs:
@@ -397,6 +426,16 @@ class MemoryManager:
             # FAIL CLOSED: Status must be strictly 'active' (absent, blocked, or deleted fails closed)
             if payload.get("status") != "active":
                 continue
+
+            # FAIL CLOSED: Vector space mismatch rejection
+            # Never expose or mix memories embedded with a different model space
+            doc_model = payload.get("embedding_model")
+            active_model = self.active_embedding_model
+            if active_model is not None:
+                if doc_model and doc_model != active_model:
+                    continue
+                if not doc_model and active_model != "models/gemini-embedding-001":
+                    continue
 
             text_content = payload.get("data") or doc.get("text", "")
             if not text_content:
@@ -521,6 +560,7 @@ class MemoryManager:
                     "$set": {
                             "payload.data": text,
                             "payload.classification": classification,
+                            "payload.embedding_model": self.active_embedding_model,
                             "payload.updated_at": now_iso,
                         }
                     },
@@ -537,6 +577,7 @@ class MemoryManager:
                         "embedding": new_vector,
                         "payload.data": text,
                         "payload.classification": classification,
+                        "payload.embedding_model": self.active_embedding_model,
                         "payload.updated_at": now_iso,
                     }
                 },
