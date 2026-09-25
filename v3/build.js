@@ -4,7 +4,13 @@ import path from 'node:path';
 
 const isWatch = process.argv.includes('--watch');
 
-// Ensure dist directory exists
+// Clean and ensure dist directory exists
+if (fs.existsSync('dist') && !isWatch) {
+  const entries = fs.readdirSync('dist');
+  for (const entry of entries) {
+    fs.rmSync(path.join('dist', entry), { recursive: true, force: true });
+  }
+}
 if (!fs.existsSync('dist')) {
   fs.mkdirSync('dist', { recursive: true });
 }

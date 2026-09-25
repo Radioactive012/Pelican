@@ -1,7 +1,7 @@
 {
   "name": "context-passport",
   "version": "0.1.0",
-  "description": "Context Passport: opt-in controlled cloud memory for ChatGPT in Brave and Chrome",
+  "description": "Context Passport V3: self-improving, privacy-first browser memory for ChatGPT, Claude, and Gemini",
   "private": true,
   "workspaces": [
     "extension",

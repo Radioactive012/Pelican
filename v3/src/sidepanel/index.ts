@@ -35,23 +35,40 @@ document.addEventListener('DOMContentLoaded', async () => {
   initFallback();
 });
 
-// Tab Navigation
-function initTabs() {
+// Tab Navigation & Keyboard Switching
+function switchToTab(target: string) {
   const tabBtns = document.querySelectorAll<HTMLButtonElement>('.cp-nav-btn');
   const tabPanes = document.querySelectorAll<HTMLElement>('.cp-tab-pane');
 
   tabBtns.forEach((btn) => {
+    const isTarget = btn.getAttribute('data-tab') === target;
+    btn.classList.toggle('active', isTarget);
+    btn.setAttribute('aria-selected', isTarget ? 'true' : 'false');
+  });
+
+  tabPanes.forEach((pane) => {
+    pane.classList.toggle('active', pane.id === `tab-${target}`);
+  });
+
+  if (target === 'vault') loadVaultMemories();
+  if (target === 'preferences') loadPreferences();
+}
+
+function initTabs() {
+  const tabBtns = document.querySelectorAll<HTMLButtonElement>('.cp-nav-btn');
+
+  tabBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
       const target = btn.getAttribute('data-tab');
-      tabBtns.forEach((b) => b.classList.remove('active'));
-      tabPanes.forEach((p) => p.classList.remove('active'));
+      if (target) switchToTab(target);
+    });
 
-      btn.classList.add('active');
-      const pane = document.getElementById(`tab-${target}`);
-      if (pane) pane.classList.add('active');
-
-      if (target === 'vault') loadVaultMemories();
-      if (target === 'preferences') loadPreferences();
+    btn.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const target = btn.getAttribute('data-tab');
+        if (target) switchToTab(target);
+      }
     });
   });
 }
@@ -132,7 +149,10 @@ async function initSettings(settings: any) {
     const email = emailInput?.value.trim() || '';
     const password = passwordInput?.value || '';
     if (!email || !password) {
-      if (authMessage) authMessage.textContent = 'Enter your email and password.';
+      if (authMessage) {
+        authMessage.textContent = 'Enter your email and password.';
+        authMessage.className = 'cp-hint-text cp-hint-error';
+      }
       return;
     }
     signInBtn.disabled = true;
@@ -145,12 +165,18 @@ async function initSettings(settings: any) {
       await setSetting('auth_token', token);
       await setSetting('user_email', email);
       if (tokenInput) tokenInput.value = token;
-      if (authMessage) authMessage.textContent = 'Signed in. Your password was not saved.';
+      if (authMessage) {
+        authMessage.textContent = 'Signed in successfully. Your password was not saved.';
+        authMessage.className = 'cp-hint-text cp-hint-success';
+      }
       await initConnectionStatus();
       await loadVaultMemories();
       await loadPreferences();
     } catch (err: any) {
-      if (authMessage) authMessage.textContent = `Sign-in failed: ${err.message || 'Try again.'}`;
+      if (authMessage) {
+        authMessage.textContent = `Sign-in failed: ${err.message || 'Try again.'}`;
+        authMessage.className = 'cp-hint-text cp-hint-error';
+      }
     } finally {
       if (passwordInput) passwordInput.value = '';
       signInBtn.disabled = false;
@@ -159,10 +185,15 @@ async function initSettings(settings: any) {
 
   signOutBtn?.addEventListener('click', async () => {
     await setSetting('auth_token', '');
+    await setSetting('user_email', '');
     apiClient.setToken('');
     if (tokenInput) tokenInput.value = '';
     if (passwordInput) passwordInput.value = '';
-    if (authMessage) authMessage.textContent = 'Signed out.';
+    if (emailInput) emailInput.value = '';
+    if (authMessage) {
+      authMessage.textContent = 'Signed out successfully.';
+      authMessage.className = 'cp-hint-text cp-hint-success';
+    }
     await initConnectionStatus();
     await loadVaultMemories();
     await loadPreferences();
@@ -175,7 +206,10 @@ async function initSettings(settings: any) {
 
       try { await ensureBackendPermission(newUrl); }
       catch (error: any) {
-        if (authMessage) authMessage.textContent = error?.message || 'Backend permission was not granted.';
+        if (authMessage) {
+          authMessage.textContent = error?.message || 'Backend permission was not granted.';
+          authMessage.className = 'cp-hint-text cp-hint-error';
+        }
         return;
       }
 
@@ -190,6 +224,7 @@ async function initSettings(settings: any) {
 
       await initConnectionStatus();
       await loadVaultMemories();
+      await loadPreferences();
     });
   }
 }
@@ -207,19 +242,86 @@ async function loadVaultMemories() {
   const listEl = document.getElementById('vault-list');
   if (!listEl) return;
 
-  listEl.innerHTML = '<div class="cp-empty-state">Loading memories...</div>';
+  const token = await getSetting('auth_token');
+  if (!token) {
+    listEl.innerHTML = `
+      <div class="cp-empty-state" role="status">
+        <div class="cp-empty-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+        <div class="cp-empty-title">Sign in to view your vault</div>
+        <p class="cp-empty-desc">Open the Settings tab to sign in or supply your Supabase auth token.</p>
+        <button type="button" class="cp-btn cp-btn-secondary cp-empty-action" id="vault-open-settings-btn">Open Settings</button>
+      </div>
+    `;
+    listEl.querySelector('#vault-open-settings-btn')?.addEventListener('click', () => switchToTab('settings'));
+    return;
+  }
+
+  listEl.innerHTML = `
+    <div class="cp-loading-state" role="status" aria-live="polite">
+      <div class="cp-spinner" aria-hidden="true"></div>
+      <p class="cp-loading-text">Loading memories...</p>
+    </div>
+  `;
 
   try {
     const memories = await apiClient.getAllMemories();
     if (!memories || memories.length === 0) {
-      listEl.innerHTML = '<div class="cp-empty-state">No memories stored yet.</div>';
+      listEl.innerHTML = `
+        <div class="cp-empty-state" role="status">
+          <div class="cp-empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <div class="cp-empty-title">No memories stored yet</div>
+          <p class="cp-empty-desc">Enable capture in Settings and converse on ChatGPT, Claude, or Gemini to automatically distill facts.</p>
+        </div>
+      `;
       return;
     }
 
     listEl.innerHTML = '';
     memories.forEach((mem) => listEl.appendChild(renderMemoryCard(mem)));
   } catch (err: any) {
-    listEl.innerHTML = `<div class="cp-empty-state">Failed to load memories: ${escapeHtml(err.message)}</div>`;
+    const isAuthError = /HTTP 401|HTTP 403|token_expired/i.test(err?.message || '');
+    const isOffline = /failed to fetch|offline|networkerror|econnrefused/i.test(err?.message || '');
+    let title = 'Error loading memories';
+    let desc = escapeHtml(err?.message || 'An unexpected error occurred.');
+    let actionLabel = 'Retry';
+    let actionCallback: () => void = () => loadVaultMemories();
+
+    if (isAuthError) {
+      title = 'Authentication expired';
+      desc = 'Your session has expired. Please sign in again from the Settings tab.';
+      actionLabel = 'Go to Settings';
+      actionCallback = () => switchToTab('settings');
+    } else if (isOffline) {
+      title = 'Backend server offline';
+      desc = 'Could not reach FastAPI backend at <code>http://127.0.0.1:8000</code>. Verify the server is running.';
+    }
+
+    listEl.innerHTML = `
+      <div class="cp-error-state" role="alert" aria-live="assertive">
+        <div class="cp-error-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <div class="cp-error-title">${title}</div>
+        <div class="cp-error-desc">${desc}</div>
+        <div class="cp-error-actions">
+          <button type="button" class="cp-btn cp-btn-secondary cp-error-btn" id="vault-error-action-btn">${actionLabel}</button>
+        </div>
+      </div>
+    `;
+    listEl.querySelector('#vault-error-action-btn')?.addEventListener('click', actionCallback);
   }
 }
 
@@ -321,19 +423,85 @@ async function loadPreferences() {
   const listEl = document.getElementById('preferences-list');
   if (!listEl) return;
 
-  listEl.innerHTML = '<div class="cp-empty-state">Loading preferences...</div>';
+  const token = await getSetting('auth_token');
+  if (!token) {
+    listEl.innerHTML = `
+      <div class="cp-empty-state" role="status">
+        <div class="cp-empty-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+          </svg>
+        </div>
+        <div class="cp-empty-title">Sign in to view preferences</div>
+        <p class="cp-empty-desc">Open the Settings tab to sign in or supply your Supabase auth token.</p>
+        <button type="button" class="cp-btn cp-btn-secondary cp-empty-action" id="pref-open-settings-btn">Open Settings</button>
+      </div>
+    `;
+    listEl.querySelector('#pref-open-settings-btn')?.addEventListener('click', () => switchToTab('settings'));
+    return;
+  }
+
+  listEl.innerHTML = `
+    <div class="cp-loading-state" role="status" aria-live="polite">
+      <div class="cp-spinner" aria-hidden="true"></div>
+      <p class="cp-loading-text">Loading preferences...</p>
+    </div>
+  `;
 
   try {
     const preferences = await apiClient.getPreferences();
     if (!preferences || preferences.length === 0) {
-      listEl.innerHTML = '<div class="cp-empty-state">No preferences promoted yet.<br><small>Promotes after 3 observations across 2+ chats.</small></div>';
+      listEl.innerHTML = `
+        <div class="cp-empty-state" role="status">
+          <div class="cp-empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            </svg>
+          </div>
+          <div class="cp-empty-title">No preferences promoted yet</div>
+          <p class="cp-empty-desc">Context Passport learns how you like explanations after 3 distinct observations across at least 2 separate chats.</p>
+        </div>
+      `;
       return;
     }
 
     listEl.innerHTML = '';
     preferences.forEach((pref) => listEl.appendChild(renderPreferenceCard(pref)));
   } catch (err: any) {
-    listEl.innerHTML = `<div class="cp-empty-state">Failed to load preferences: ${escapeHtml(err.message)}</div>`;
+    const isAuthError = /HTTP 401|HTTP 403|token_expired/i.test(err?.message || '');
+    const isOffline = /failed to fetch|offline|networkerror|econnrefused/i.test(err?.message || '');
+    let title = 'Error loading preferences';
+    let desc = escapeHtml(err?.message || 'An unexpected error occurred.');
+    let actionLabel = 'Retry';
+    let actionCallback: () => void = () => loadPreferences();
+
+    if (isAuthError) {
+      title = 'Authentication expired';
+      desc = 'Your session has expired. Please sign in again from the Settings tab.';
+      actionLabel = 'Go to Settings';
+      actionCallback = () => switchToTab('settings');
+    } else if (isOffline) {
+      title = 'Backend server offline';
+      desc = 'Could not reach FastAPI backend at <code>http://127.0.0.1:8000</code>. Verify the server is running.';
+    }
+
+    listEl.innerHTML = `
+      <div class="cp-error-state" role="alert" aria-live="assertive">
+        <div class="cp-error-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <div class="cp-error-title">${title}</div>
+        <div class="cp-error-desc">${desc}</div>
+        <div class="cp-error-actions">
+          <button type="button" class="cp-btn cp-btn-secondary cp-error-btn" id="pref-error-action-btn">${actionLabel}</button>
+        </div>
+      </div>
+    `;
+    listEl.querySelector('#pref-error-action-btn')?.addEventListener('click', actionCallback);
   }
 }
 

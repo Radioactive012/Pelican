@@ -12,6 +12,6 @@ if (typeof chrome !== 'undefined' && chrome.sidePanel && chrome.sidePanel.setPan
 // Background event listener for installation / update
 if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalled) {
   chrome.runtime.onInstalled.addListener(() => {
-    console.log('Context Passport V2 installed successfully.');
+    console.log('Context Passport V3 installed successfully.');
   });
 }

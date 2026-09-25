@@ -28,29 +28,29 @@
     </header>
 
     <!-- Navigation Tabs -->
-    <nav class="cp-nav">
-      <button class="cp-nav-btn active" data-tab="vault">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+    <nav class="cp-nav" role="tablist" aria-label="Context Passport Views">
+      <button class="cp-nav-btn active" id="tab-btn-vault" data-tab="vault" role="tab" aria-selected="true" aria-controls="tab-vault" tabindex="0">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
           <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
         </svg>
         Vault
       </button>
-      <button class="cp-nav-btn" data-tab="preferences">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+      <button class="cp-nav-btn" id="tab-btn-preferences" data-tab="preferences" role="tab" aria-selected="false" aria-controls="tab-preferences" tabindex="0">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
         </svg>
         Learned
       </button>
-      <button class="cp-nav-btn" data-tab="fallback">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+      <button class="cp-nav-btn" id="tab-btn-fallback" data-tab="fallback" role="tab" aria-selected="false" aria-controls="tab-fallback" tabindex="0">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
           <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
         </svg>
         Fallback
       </button>
-      <button class="cp-nav-btn" data-tab="settings">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+      <button class="cp-nav-btn" id="tab-btn-settings" data-tab="settings" role="tab" aria-selected="false" aria-controls="tab-settings" tabindex="0">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <circle cx="12" cy="12" r="3"/>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
@@ -59,11 +59,11 @@
     </nav>
 
     <!-- TAB 1: VAULT -->
-    <main id="tab-vault" class="cp-tab-pane active">
+    <main id="tab-vault" class="cp-tab-pane active" role="tabpanel" aria-labelledby="tab-btn-vault" tabindex="0">
       <div class="cp-section-header">
         <div class="cp-section-title">Memory Vault</div>
-        <button id="vault-refresh-btn" class="cp-icon-btn" title="Refresh">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+        <button id="vault-refresh-btn" class="cp-icon-btn" title="Refresh memories" aria-label="Refresh memories">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <polyline points="23 4 23 10 17 10"/>
             <polyline points="1 20 1 14 7 14"/>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
@@ -73,16 +73,19 @@
       <p class="cp-hint-text">Review the wording, source, and evidence behind each memory. Corrections take effect on the next recall.</p>
 
       <div id="vault-list" class="cp-card-list">
-        <div class="cp-empty-state">Loading memories...</div>
+        <div class="cp-loading-state" role="status" aria-live="polite">
+          <div class="cp-spinner" aria-hidden="true"></div>
+          <p class="cp-loading-text">Loading memories...</p>
+        </div>
       </div>
     </main>
 
     <!-- TAB 2: LEARNED PREFERENCES -->
-    <main id="tab-preferences" class="cp-tab-pane">
+    <main id="tab-preferences" class="cp-tab-pane" role="tabpanel" aria-labelledby="tab-btn-preferences" tabindex="0">
       <div class="cp-section-header">
         <div class="cp-section-title">Explanation Preferences</div>
-        <button id="pref-refresh-btn" class="cp-icon-btn" title="Refresh">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+        <button id="pref-refresh-btn" class="cp-icon-btn" title="Refresh preferences" aria-label="Refresh preferences">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <polyline points="23 4 23 10 17 10"/>
             <polyline points="1 20 1 14 7 14"/>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
@@ -93,12 +96,15 @@
         Learned from 3 distinct observations across 2+ chats. Correcting a preference locks your wording.
       </p>
       <div id="preferences-list" class="cp-card-list">
-        <div class="cp-empty-state">No preferences promoted yet.</div>
+        <div class="cp-loading-state" role="status" aria-live="polite">
+          <div class="cp-spinner" aria-hidden="true"></div>
+          <p class="cp-loading-text">Loading preferences...</p>
+        </div>
       </div>
     </main>
 
     <!-- TAB 3: UNIVERSAL FALLBACK ROUTE -->
-    <main id="tab-fallback" class="cp-tab-pane">
+    <main id="tab-fallback" class="cp-tab-pane" role="tabpanel" aria-labelledby="tab-btn-fallback" tabindex="0">
       <div class="cp-section-header">
         <div class="cp-section-title">Universal Fallback</div>
       </div>
@@ -140,7 +146,7 @@
     </main>
 
     <!-- TAB 4: SETTINGS & PER-SITE TOGGLES -->
-    <main id="tab-settings" class="cp-tab-pane">
+    <main id="tab-settings" class="cp-tab-pane" role="tabpanel" aria-labelledby="tab-btn-settings" tabindex="0">
       <div class="cp-section-header">
         <div class="cp-section-title">Site Capture Toggles</div>
       </div>
@@ -153,7 +159,7 @@
           <div class="cp-toggle-name">ChatGPT</div>
           <div class="cp-toggle-url">chatgpt.com</div>
         </div>
-        <label class="cp-switch">
+        <label class="cp-switch" aria-label="Toggle ChatGPT capture">
           <input type="checkbox" id="toggle-chatgpt">
           <span class="cp-slider"></span>
         </label>
@@ -164,7 +170,7 @@
           <div class="cp-toggle-name">Claude</div>
           <div class="cp-toggle-url">claude.ai</div>
         </div>
-        <label class="cp-switch">
+        <label class="cp-switch" aria-label="Toggle Claude capture">
           <input type="checkbox" id="toggle-claude">
           <span class="cp-slider"></span>
         </label>
@@ -175,7 +181,7 @@
           <div class="cp-toggle-name">Gemini Web</div>
           <div class="cp-toggle-url">gemini.google.com</div>
         </div>
-        <label class="cp-switch">
+        <label class="cp-switch" aria-label="Toggle Gemini Web capture">
           <input type="checkbox" id="toggle-gemini">
           <span class="cp-slider"></span>
         </label>
@@ -200,8 +206,8 @@
         <input type="password" id="setting-password" class="cp-input" autocomplete="current-password" placeholder="Used only to sign in">
       </div>
 
-      <button id="sign-in-btn" class="cp-btn cp-btn-primary w-full">Sign in</button>
-      <button id="sign-out-btn" class="cp-btn cp-btn-secondary w-full" style="margin-top: 8px;">Sign out</button>
+      <button id="sign-in-btn" class="cp-btn cp-btn-primary w-full" type="button">Sign in</button>
+      <button id="sign-out-btn" class="cp-btn cp-btn-secondary w-full" type="button" style="margin-top: 8px;">Sign out</button>
       <p id="auth-message" class="cp-hint-text" role="status"></p>
 
       <div class="cp-form-group" style="margin-top: 16px;">
@@ -209,9 +215,28 @@
         <input type="password" id="setting-auth-token" class="cp-input" placeholder="Advanced: test token or existing JWT">
       </div>
 
-      <button id="save-settings-btn" class="cp-btn cp-btn-primary w-full">
+      <button id="save-settings-btn" class="cp-btn cp-btn-primary w-full" type="button">
         Save Settings
       </button>
+
+      <!-- Permissions & Privacy Guide -->
+      <div class="cp-section-header" style="margin-top: 24px;">
+        <div class="cp-section-title">Permissions & Privacy</div>
+      </div>
+      <div class="cp-card cp-permissions-card">
+        <div class="cp-perm-item">
+          <strong>Local Storage:</strong> Saves your per-site capture toggles and session token. Passwords are never stored.
+        </div>
+        <div class="cp-perm-item">
+          <strong>Supported Sites:</strong> Active strictly on <code>chatgpt.com</code>, <code>claude.ai</code>, and <code>gemini.google.com</code>.
+        </div>
+        <div class="cp-perm-item">
+          <strong>Loopback Only:</strong> Connects exclusively to <code>http://127.0.0.1:8000</code>. No public cloud backend.
+        </div>
+        <div class="cp-perm-item">
+          <strong>Secret Screener:</strong> Recognized API keys, tokens, and passwords are automatically dropped client-side.
+        </div>
+      </div>
     </main>
 
     <!-- Footer -->
