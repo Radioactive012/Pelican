@@ -22,5 +22,6 @@ export function screenRecall(response: RecallCandidates) {
   }
   const preferences = (response.preferences || []).filter((pref) =>
     Boolean(pref.preference_text) && !containsSecret(pref.preference_text) && !containsSensitive(pref.preference_text));
-  return { general, sensitive, preferences };
+  return { general: general.slice(0, 3), sensitive, preferences };
 }
+

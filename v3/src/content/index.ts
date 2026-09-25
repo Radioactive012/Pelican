@@ -17,7 +17,9 @@ import {
 import { containsSecret, screenText } from '../core/screener.ts';
 import { screenRecall } from '../core/recall.ts';
 import { SiteCaptureController } from '../core/capture.ts';
+import { handleUseMemoryAction } from '../core/recallController.ts';
 import { getAllSettings } from '../core/storage.ts';
+
 
 async function init() {
   const adapter = getMatchingAdapter();
@@ -91,144 +93,13 @@ function mountUseMemoryButton(adapter: SiteAdapter, apiClient: ContextPassportAp
 }
 
 async function handleUseMemory(adapter: SiteAdapter, apiClient: ContextPassportApiClient, btn: HTMLButtonElement) {
-  if (btn.disabled) return;
-  btn.disabled = true;
-  const currentDraft = adapter.getComposerDraft();
-  const btnLabel = btn.querySelector('span');
-
-  // Strip any previously injected memory block so search doesn't send old memory context in the query!
-  const cleanDraft = stripExtensionInjectedContext(currentDraft).trim();
-
-  // CRITICAL: Secret screening before sending query to backend
-  if (cleanDraft && containsSecret(cleanDraft)) {
-    if (btnLabel) btnLabel.textContent = 'Secret in prompt!';
-    alert('Context Passport: Recognizable secret or credential detected in draft. Memory recall cancelled for privacy.');
-    setTimeout(() => {
-      if (btnLabel) btnLabel.textContent = 'Use Memory';
-    }, 2500);
-    btn.disabled = false;
-    return;
-  }
-
-  try {
-    if (btnLabel) btnLabel.textContent = 'Recalling...';
-    btn.classList.add('loading');
-
-    // Query backend using only the clean user draft, never old injected memories
-    const query = cleanDraft || 'General user preferences and active context';
-    const response = await apiClient.queryMemories(query, 3);
-
-    const { general: finalGeneral, sensitive: sensitiveCandidates, preferences } = screenRecall(response);
-
-    // CRITICAL: If no memories found, strip any old injected block from composer!
-    if (finalGeneral.length === 0 && sensitiveCandidates.length === 0 && preferences.length === 0) {
-      adapter.setComposerDraft(stripExtensionInjectedContext(adapter.getComposerDraft()));
-      if (btnLabel) btnLabel.textContent = 'No memories found';
-      setTimeout(() => {
-        if (btnLabel) btnLabel.textContent = 'Use Memory';
-        btn.classList.remove('loading');
-      }, 2000);
-      return;
-    }
-
-    let approvedSensitive: MemoryItem[] = [];
-
-    // Privacy Firewall gate: If sensitive candidates exist, pause for user approval!
-    if (sensitiveCandidates.length > 0) {
-      const allowed = await promptSensitiveApproval(sensitiveCandidates);
-      if (allowed) {
-        approvedSensitive = sensitiveCandidates;
-      }
-      // If user denied, approvedSensitive remains empty! Sensitive memory is kept out.
-    }
-
-    // Format approved memory block and inject into composer, cleanly replacing any prior block
-    const memoryBlock = formatMemoryBlock(finalGeneral, approvedSensitive, preferences);
-    const latestDraft = stripExtensionInjectedContext(adapter.getComposerDraft()).trim();
-    if (latestDraft !== cleanDraft) {
-      adapter.setComposerDraft(latestDraft);
-      if (btnLabel) btnLabel.textContent = 'Draft changed—retry';
-      return;
-    }
-    const updatedComposerText = applyMemoryBlockToDraft(latestDraft, memoryBlock);
-
-    adapter.setComposerDraft(updatedComposerText);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    if (adapter.getComposerDraft().trim() !== updatedComposerText.trim()) {
-      adapter.setComposerDraft(latestDraft);
-      if (btnLabel) btnLabel.textContent = 'Use fallback panel';
-      return;
-    }
-
-    if (btnLabel) btnLabel.textContent = 'Attached!';
-    setTimeout(() => {
-      if (btnLabel) btnLabel.textContent = 'Use Memory';
-      btn.classList.remove('loading');
-    }, 2000);
-  } catch (err: any) {
-    console.error('Use Memory failed:', err);
-    if (btnLabel) btnLabel.textContent = 'Error';
-    setTimeout(() => {
-      if (btnLabel) btnLabel.textContent = 'Use Memory';
-      btn.classList.remove('loading');
-    }, 2500);
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-/**
- * Renders the Privacy Firewall approval modal for sensitive memories
- */
-function promptSensitiveApproval(sensitiveMemories: MemoryItem[]): Promise<boolean> {
-  return new Promise((resolve) => {
-    const backdrop = document.createElement('div');
-    backdrop.className = 'cp-modal-backdrop';
-
-    const itemsHtml = sensitiveMemories
-      .map(
-        (m) => `
-        <div class="cp-sensitive-item">
-          <span class="cp-sensitive-badge">Sensitive</span>
-          <span>${escapeHtml(m.text)}</span>
-        </div>`
-      )
-      .join('');
-
-    backdrop.innerHTML = `
-      <div class="cp-modal-card">
-        <div class="cp-modal-header">
-          <div class="cp-modal-icon">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
-          </div>
-          <div class="cp-modal-title">Privacy Firewall: Sensitive Context</div>
-        </div>
-        <div class="cp-modal-desc">
-          Relevant sensitive memories were found for this prompt. Do you want to allow them once for this request?
-        </div>
-        <div class="cp-sensitive-preview">
-          ${itemsHtml}
-        </div>
-        <div class="cp-modal-actions">
-          <button type="button" class="cp-btn-secondary" id="cp-deny-btn">Don't use</button>
-          <button type="button" class="cp-btn-primary" id="cp-allow-btn">Allow once</button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(backdrop);
-
-    const cleanup = (allowed: boolean) => {
-      backdrop.remove();
-      resolve(allowed);
-    };
-
-    backdrop.querySelector('#cp-allow-btn')?.addEventListener('click', () => cleanup(true));
-    backdrop.querySelector('#cp-deny-btn')?.addEventListener('click', () => cleanup(false));
+  await handleUseMemoryAction({
+    adapter,
+    apiClient,
+    button: btn,
   });
 }
+
 
 function setupCaptureObserver(adapter: SiteAdapter, apiClient: ContextPassportApiClient, initiallyEnabled: boolean): SiteCaptureController {
   const controller = new SiteCaptureController({

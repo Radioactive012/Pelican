@@ -36,7 +36,7 @@ const SECRET_PATTERNS: Array<{ name: string; pattern: RegExp }> = [
     pattern: /(?:\bpassword|\bpasswd|\bpwd)\s*[:=]\s*['"]?([^\s'"]{6,})['"]?/i,
   },
   // Bearer Token
-  { name: 'Bearer Token Assignment', pattern: /\bBearer\s+([a-zA-Z0-9_\-\.]{20,})/i },
+  { name: 'Bearer Token Assignment', pattern: /\bBearer\s+([a-zA-Z0-9_\-\.]{12,})/i },
   // Financial numbers
   { name: 'Credit Card Number', pattern: /\b(?:\d{4}[ -]?){3}\d{4}\b/ },
   { name: 'Social Security Number', pattern: /\b\d{3}-\d{2}-\d{4}\b/ },
