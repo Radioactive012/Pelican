@@ -51,6 +51,8 @@ from security import classify_text, contains_secret
 logger = logging.getLogger(__name__)
 
 BUILD_MARKER = os.getenv("BUILD_MARKER", "context-passport-v3-api-001")
+
+
 def release_commit() -> str:
     if os.getenv("RENDER_GIT_COMMIT"):
         return os.environ["RENDER_GIT_COMMIT"][:12]
@@ -61,6 +63,9 @@ def release_commit() -> str:
         ).decode().strip()
     except (OSError, subprocess.SubprocessError):
         return "unknown"
+
+
+RELEASE_COMMIT = release_commit()
 
 MAX_REQUEST_BYTES = int(os.getenv("MAX_REQUEST_BYTES", "65536"))  # 64 KB limit
 RATE_LIMIT_WINDOW = float(os.getenv("RATE_LIMIT_WINDOW", "60.0"))    # 60-second window
@@ -410,7 +415,7 @@ async def health() -> dict[str, str]:
         "service": "context-passport",
         "version": "3.0.0",
         "build": BUILD_MARKER,
-        "commit": release_commit(),
+        "commit": RELEASE_COMMIT,
         "mem0": version("mem0ai"),
         "fastapi": version("fastapi"),
     }
