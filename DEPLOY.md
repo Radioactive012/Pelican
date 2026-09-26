@@ -5,7 +5,7 @@
 Use **Render Blueprint** with this repository's `render.yaml`. The free Python web service serves the landing page, welcome-back dashboard, onboarding, API, and extension ZIP from one HTTPS origin. MongoDB Atlas stores memories and Supabase handles sign-in. Render's free service sleeps when idle; wake it before a demo by opening `/ready` and waiting for the response. Free hosting is suitable for a demo, not a reliability guarantee.
 
 1. Use the public [Pelican release repository](https://github.com/Radioactive012/Pelican), which contains `render.yaml`, `website/`, `backend/`, and `release/pelican-v3.zip`. Never push `.env`.
-2. In [Render](https://dashboard.render.com/), choose **New → Blueprint**, connect `Radioactive012/Pelican`, select `main`, and apply `render.yaml` using the **Free** plan.
+2. Open the [Pelican Render Blueprint link](https://render.com/deploy?repo=https://github.com/Radioactive012/Pelican), connect GitHub if prompted, select `main`, and apply `render.yaml` using the **Free** plan.
 3. Enter the `sync: false` values in Render's environment settings: `OPENROUTER_API_KEY`, `MONGODB_URI`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. Copy them from your local `.env` yourself; do not paste keys into chat or GitHub. The Blueprint sets all nonsecret settings, including production mode and the explicit public binding flag.
 4. In MongoDB Atlas **Network Access**, allow the Render service to connect. The free service does not provide a fixed outbound IP, so the demo option is `0.0.0.0/0` with a dedicated, least-privilege database user, a strong password, and Atlas TLS. Remove that broad rule when you no longer need the public demo.
 5. In Supabase **Authentication → URL Configuration**, set **Site URL** to your Render URL's `/dashboard.html` and allow redirects for your Render origin. If email confirmation is enabled, the user must click the confirmation link before signing in. Supabase's default email sending may be limited; check the Authentication logs or configure SMTP if mail does not arrive.
@@ -16,7 +16,7 @@ The website and dashboard call the API on their own origin. The `/download/pelic
 ## Install the demo extension
 
 1. On the live website, click **Download extension ZIP** and unzip it.
-2. Open `brave://extensions` or `chrome://extensions`, enable **Developer mode**, select **Load unpacked**, and choose the unzipped folder containing `manifest.json`.
+2. If an older local Pelican extension is loaded, disable or remove it first to avoid duplicate capture. Open `brave://extensions` or `chrome://extensions`, enable **Developer mode**, select **Load unpacked**, and choose the unzipped folder containing `manifest.json`.
 3. Pin Pelican. Its first-run memory setup opens automatically. Sign in with the same email and password as the website.
 
 Chrome and Brave block ordinary one-click installation from a website. A Chrome Web Store listing is required for store-style installation; submission needs a developer account and review. The ZIP route is the shortest self-hosted demo path.
