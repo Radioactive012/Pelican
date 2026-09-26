@@ -65,7 +65,7 @@ Context Passport is a **self-improving, privacy-first browser memory** product.
 | Step 10 | Connect Models & Routing | One OpenRouter key, live 40-case benchmark, Jev route and actual usage validation | PENDING — live key and benchmark |
 | Step 11 | Real Browser Journey | Live ChatGPT, Claude, Gemini web tests in Chrome/Brave; cross-site recall; privacy modals | LIVE PENDING |
 | Step 12 | Final Release & Judge Rehearsal | Fresh `v3/dist`, clean demo account, end-to-end judge demonstration rehearsal | LIVE PENDING |
-| Deployment | Render release | Free Blueprint and paired extension ZIP prepared; live Render account deployment and full authenticated browser journey remain pending | PREPARED |
+| Deployment | Render release | `3e9fc52` is live on Render; `/health`, `/ready`, hosted ZIP, and an authenticated dashboard recall passed. A fresh extension sign-in and full three-site journey remain pending. | PARTIAL LIVE PASS |
 
 Emergency session repair (2026-09-26): expired access tokens must be refreshed once using a rotated Supabase refresh token and the original request retried. An expired JWT must never be accepted via an admin user lookup. Logout must clear both tokens, account identity, and visible vault data. The ChatGPT/Claude/Gemini live journey remains a separate gate.
 
