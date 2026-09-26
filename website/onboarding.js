@@ -57,12 +57,79 @@
   }
 
   function parseMemories(raw) {
-    if (!raw) return [];
-    const fenced = raw.match(/```[^\n]*\n([\s\S]*?)```/);
-    const source = fenced ? fenced[1] : raw;
-    return [...new Set(source.split(/\r?\n/).map(line => line.trim()
-      .replace(/^```.*$/, '').replace(/^\[[^\]]{1,40}\]\s*[-–:]\s*/, '')
-      .replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim()).filter(Boolean))];
+    if (!raw || !raw.trim()) return [];
+    let text = raw.trim();
+    // Extract contents from any code blocks if present
+    const codeBlocks = [...text.matchAll(/```(?:[a-zA-Z0-9_-]+)?\s*\n([\s\S]*?)```/g)];
+    if (codeBlocks.length > 0) {
+      text = codeBlocks.map(m => m[1]).join('\n');
+    }
+
+    const lines = text.split(/\r?\n/);
+    const parsed = [];
+    let currentItem = '';
+
+    for (let rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) {
+        if (currentItem) {
+          parsed.push(currentItem);
+          currentItem = '';
+        }
+        continue;
+      }
+      if (/^---+$/.test(line) || /^```/.test(line)) continue;
+      if (/^(?:here (?:is|are)|that (?:is|was) the complete|let me know if|i hope this helps|confirm whether)/i.test(line)) continue;
+
+      const isNewEntry = /^[-*•]\s+/.test(line) ||
+                         /^\d+[\.)]\s+/.test(line) ||
+                         /^\[[^\]]{1,40}\]\s*[-–:]\s*/.test(line) ||
+                         /^#+\s+/.test(line);
+
+      const cleaned = line
+        .replace(/^#+\s*/, '')
+        .replace(/^\[[^\]]{1,40}\]\s*[-–:]\s*/, '')
+        .replace(/^[-*•]\s+/, '')
+        .replace(/^\d+[\.)]\s+/, '')
+        .trim();
+
+      if (!cleaned) continue;
+
+      if (isNewEntry) {
+        if (currentItem) parsed.push(currentItem);
+        currentItem = cleaned;
+      } else {
+        if (currentItem) {
+          currentItem += ' ' + cleaned;
+        } else {
+          currentItem = cleaned;
+        }
+      }
+    }
+    if (currentItem) parsed.push(currentItem);
+    return [...new Set(parsed.filter(Boolean))];
+  }
+
+  function updateImportPreview() {
+    const previewEl = byId('importPreview');
+    const countEl = byId('previewCount');
+    const chipsEl = byId('importChips');
+    if (!previewEl || !countEl || !chipsEl) return;
+    const raw = byId('importData')?.value || '';
+    const memories = parseMemories(raw);
+    if (!memories.length) {
+      previewEl.style.display = 'none';
+      chipsEl.innerHTML = '';
+      return;
+    }
+    previewEl.style.display = 'block';
+    countEl.textContent = String(memories.length);
+    chipsEl.innerHTML = memories.slice(0, 15).map(m => `
+      <div class="import-chip">
+        <span class="import-chip-dot"></span>
+        <span title="${m.replace(/"/g, '&quot;')}">${m.replace(/</g, '&lt;')}</span>
+      </div>
+    `).join('') + (memories.length > 15 ? `<div class="import-chip" style="color:var(--lime)">+${memories.length - 15} more</div>` : '');
   }
 
   function setAccountMode(mode) {
@@ -109,7 +176,9 @@
       platforms,
       memories: parseMemories(byId('importData')?.value || '')
     };
-    sessionStorage.setItem('pelican_pending_onboarding', JSON.stringify(pending));
+    const json = JSON.stringify(pending);
+    sessionStorage.setItem('pelican_pending_onboarding', json);
+    localStorage.setItem('pelican_pending_onboarding', json);
   }
 
   async function startGoogleAuth(targetUrl) {
@@ -201,10 +270,8 @@
         if (!token) throw new Error('Sign-in did not return a session.');
       }
 
-      // Parse memory input and profile data
+      // Parse memory input and profile data - allow unlimited context
       const memories = parseMemories(byId('importData')?.value || '');
-      if (memories.length > 30) throw new Error('Import at most 30 memories at a time.');
-      if (memories.some(memory => memory.length > 500)) throw new Error('Each memory must be at most 500 characters.');
 
       const age = byId('u-age')?.value;
       const payload = {
@@ -469,11 +536,12 @@
       history.replaceState(null, '', window.location.pathname);
 
       // Check if there was pending onboarding data to import
-      const pendingRaw = sessionStorage.getItem('pelican_pending_onboarding');
+      const pendingRaw = sessionStorage.getItem('pelican_pending_onboarding') || localStorage.getItem('pelican_pending_onboarding');
       if (pendingRaw) {
         try {
           const pending = JSON.parse(pendingRaw);
           sessionStorage.removeItem('pelican_pending_onboarding');
+          localStorage.removeItem('pelican_pending_onboarding');
           if (pending.platforms) {
             if (extension) {
               const cap = {};
@@ -536,6 +604,15 @@
   byId('step3GoogleSignInBtn')?.addEventListener('click', () => startGoogleAuth());
   byId('modalGoogleSignInBtn')?.addEventListener('click', () => startGoogleAuth(window.location.origin + '/dashboard.html'));
   byId('modalGoogleSignUpBtn')?.addEventListener('click', () => startGoogleAuth(window.location.origin + '/dashboard.html'));
+
+  byId('importData')?.addEventListener('input', updateImportPreview);
+  document.querySelectorAll('.btn-skip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ta = byId('importData');
+      if (ta) ta.value = '';
+      updateImportPreview();
+    });
+  });
 
   setupQuickSignIn();
   handleOAuthCallback().then(() => checkExistingAuth());

@@ -472,8 +472,8 @@ class MemoryManager:
     ) -> Dict[str, Any]:
         """Save one user-confirmed onboarding fact in the normal recall store."""
         clean_text = " ".join(text.split()).strip()
-        if not clean_text or len(clean_text) > 500:
-            raise ValueError("Imported memories must contain 1–500 characters")
+        if not clean_text:
+            raise ValueError("Imported memory cannot be empty")
         if contains_secret(clean_text):
             return {"status": "skipped", "reason": "secret_credential_screened"}
 

@@ -66,8 +66,9 @@
     }
     .p-node{
       display:flex;flex-direction:column;align-items:center;gap:7px;
-      position:relative;z-index:1
+      position:relative;z-index:1;cursor:pointer;user-select:none;
     }
+    .p-node:hover .p-ring:not(.done):not(.active){border-color:var(--purple);color:#ffffff}
     .p-ring{
       width:36px;height:36px;border-radius:50%;
       border:1.5px solid #332c24;
@@ -85,6 +86,28 @@
     .p-seg{flex:1;height:1px;background:#241e17;position:relative;overflow:hidden;margin:0 6px;transform:translateY(-11px)}
     .p-seg::after{content:"";position:absolute;left:0;top:0;height:100%;width:0;background:linear-gradient(90deg,var(--purple),var(--lime));transition:width .6s var(--ease)}
     .p-seg.filled::after{width:100%}
+
+    /* ── Import Preview ── */
+    .import-preview{
+      margin-top:14px;padding:14px 16px;background:#0d0d0d;border:1px solid #242424;border-radius:8px;animation:fade-up .3s var(--ease);
+    }
+    .import-preview-head{
+      display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:12px;
+    }
+    .import-count-badge{color:var(--lime);font-size:12px;font-weight:600}
+    .preview-hint{color:#666666;font-size:10px;letter-spacing:.05em}
+    .import-chips{
+      display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow-y:auto;scrollbar-width:thin
+    }
+    .import-chip{
+      display:inline-flex;align-items:center;gap:6px;
+      background:#161616;border:1px solid #2a2a2a;border-radius:20px;
+      padding:4px 11px;font-size:12px;color:#cccccc;max-width:100%;
+    }
+    .import-chip span{
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:380px;
+    }
+    .import-chip-dot{width:5px;height:5px;border-radius:50%;background:var(--lime);flex-shrink:0}
 
     /* ── Step panels ── */
     .step-content{flex:1;display:flex;flex-direction:column}
@@ -501,17 +524,17 @@
 
     <!-- Progress track -->
     <div class="progress-track">
-      <div class="p-node active" id="pn1">
+      <div class="p-node active" id="pn1" data-step="1" role="button" tabindex="0" aria-label="Step 1: The basics">
         <div class="p-ring active" id="pr1"><span class="p-num">1</span></div>
         <span class="p-label">The basics</span>
       </div>
       <div class="p-seg" id="ps1"></div>
-      <div class="p-node" id="pn2">
+      <div class="p-node" id="pn2" data-step="2" role="button" tabindex="0" aria-label="Step 2: Your history">
         <div class="p-ring" id="pr2"><span class="p-num">2</span></div>
         <span class="p-label">Your history</span>
       </div>
       <div class="p-seg" id="ps2"></div>
-      <div class="p-node" id="pn3">
+      <div class="p-node" id="pn3" data-step="3" role="button" tabindex="0" aria-label="Step 3: Go live">
         <div class="p-ring" id="pr3"><span class="p-num">3</span></div>
         <span class="p-label">Go live</span>
       </div>
@@ -650,8 +673,16 @@
 
         <div class="paste-wrap">
           <p class="paste-label">Paste the AI's output here</p>
-          <textarea id="importData" placeholder="Paste the AI's full response here — it's okay if it's messy, Pelican will figure it out…"></textarea>
+          <textarea id="importData" placeholder="Paste the AI's full response here — any size, paragraphs, or notes welcome, Pelican will parse it all…"></textarea>
           <div class="paste-badge mono">Optional</div>
+        </div>
+
+        <div id="importPreview" class="import-preview" style="display:none">
+          <div class="import-preview-head">
+            <span class="mono import-count-badge">✨ <strong id="previewCount">0</strong> memories detected</span>
+            <span class="preview-hint mono">READY FOR YOUR VAULT</span>
+          </div>
+          <div id="importChips" class="import-chips"></div>
         </div>
 
         <div class="step-nav">
