@@ -116,7 +116,7 @@
     const errEl = byId('setup-error') || byId('modalError');
     if (errEl) errEl.textContent = '';
     savePendingOnboarding();
-    const returnUrl = targetUrl || (window.location.origin + '/onboarding.html#oauth_success');
+    const returnUrl = targetUrl || (window.location.origin + '/onboarding.html');
     try {
       const res = await fetch(`${api}/api/v1/auth/google?redirect_to=${encodeURIComponent(returnUrl)}`);
       const data = await res.json().catch(() => ({}));
@@ -423,7 +423,11 @@
     if (errorDesc) {
       history.replaceState(null, '', window.location.pathname);
       const errEl = byId('setup-error') || byId('modalError');
-      if (errEl) errEl.textContent = decodeURIComponent(errorDesc.replace(/\+/g, ' '));
+      let msg = decodeURIComponent(errorDesc.replace(/\+/g, ' '));
+      if (msg.toLowerCase().includes('bad_oauth_state') || msg.toLowerCase().includes('state not found')) {
+        msg = 'Google OAuth state verification failed. In Brave or browsers with ad blockers, disable Shields/blockers for localhost & supabase and try again.';
+      }
+      if (errEl) errEl.textContent = msg;
       goTo(3);
       return;
     }
