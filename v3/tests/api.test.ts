@@ -1,6 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ContextPassportApiClient } from '../src/core/api.ts';
+import { getAllSettings, getSetting } from '../src/core/storage.ts';
+
+test('a freshly installed hosted ZIP reads its backend from the stamped manifest', async () => {
+  const previousChrome = (globalThis as any).chrome;
+  (globalThis as any).chrome = {
+    runtime: { getManifest: () => ({homepage_url: 'https://pelican-demo.onrender.com'}) },
+    storage: {local: {get: (_keys: unknown, callback: (data: object) => void) => callback({})}},
+  };
+  try {
+    assert.equal(await getSetting('backend_url'), 'https://pelican-demo.onrender.com');
+    assert.equal((await getAllSettings()).backend_url, 'https://pelican-demo.onrender.com');
+  } finally {
+    (globalThis as any).chrome = previousChrome;
+  }
+});
 
 test('manual Bearer prefix is normalized before authenticated requests', async () => {
   const originalFetch = globalThis.fetch;
