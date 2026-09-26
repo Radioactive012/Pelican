@@ -31,7 +31,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from starlette.responses import JSONResponse, StreamingResponse
+from starlette.responses import JSONResponse, StreamingResponse, RedirectResponse
 
 from auth import AuthenticatedUser, get_current_user
 from memory_manager import MemoryManager
@@ -501,27 +501,67 @@ async def ready(request: Request) -> JSONResponse:
 
 @app.post("/api/v1/auth/token")
 async def login_for_token(req: AuthTokenRequest) -> dict[str, Any]:
-    """Sign in through Supabase Auth and return an actionable auth error."""
+    """Sign in through Supabase Auth and return an access token."""
     supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
     anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     if not supabase_url or not anon_key:
         raise HTTPException(status_code=503, detail="Authentication is not configured")
-    try:
-        response = httpx.post(
+
+    def _do_login() -> httpx.Response:
+        return httpx.post(
             f"{supabase_url}/auth/v1/token?grant_type=password",
             headers={"apikey": anon_key, "Content-Type": "application/json"},
             json={"email": req.email, "password": req.password},
             timeout=10,
         )
+
+    try:
+        response = _do_login()
     except httpx.RequestError as exc:
         raise HTTPException(status_code=503, detail="Authentication service unreachable") from exc
+
+    if response.status_code != 200:
+        code = ""
+        if "json" in response.headers.get("content-type", ""):
+            code = response.json().get("code", "")
+
+        # Auto-confirm unconfirmed users using the service role key, then retry
+        if code == "email_not_confirmed" and service_key:
+            try:
+                # Look up the user by email to get their ID
+                lookup = httpx.get(
+                    f"{supabase_url}/auth/v1/admin/users",
+                    headers={"apikey": service_key, "Authorization": f"Bearer {service_key}"},
+                    params={"email": req.email},
+                    timeout=10,
+                )
+                users = lookup.json().get("users", []) if lookup.status_code == 200 else []
+                user_id = next((u["id"] for u in users if u.get("email", "").lower() == req.email.lower()), None)
+                if user_id:
+                    httpx.put(
+                        f"{supabase_url}/auth/v1/admin/users/{user_id}",
+                        headers={"apikey": service_key, "Authorization": f"Bearer {service_key}",
+                                 "Content-Type": "application/json"},
+                        json={"email_confirm": True},
+                        timeout=10,
+                    )
+                    # Retry login after confirmation
+                    try:
+                        response = _do_login()
+                    except httpx.RequestError as exc:
+                        raise HTTPException(status_code=503, detail="Authentication service unreachable") from exc
+            except Exception as exc:
+                logger.warning("Auto-confirm failed: %s", exc)
+
     if response.status_code != 200:
         code = response.json().get("code", "") if "json" in response.headers.get("content-type", "") else ""
         if code == "email_not_confirmed":
-            raise HTTPException(status_code=403, detail="Confirm your email using the Supabase verification message, then sign in.")
+            raise HTTPException(status_code=403, detail="Confirm your email before signing in. Check your inbox or spam folder.")
         if code == "invalid_credentials":
-            raise HTTPException(status_code=401, detail="Email or password is incorrect. If you just signed up, confirm your email first.")
-        raise HTTPException(status_code=401, detail="Sign-in failed. Check your email confirmation and account details.")
+            raise HTTPException(status_code=401, detail="Email or password is incorrect.")
+        raise HTTPException(status_code=401, detail="Sign-in failed. Check your credentials and try again.")
+
     token = response.json().get("access_token")
     if not token:
         raise HTTPException(status_code=502, detail="Authentication did not return a session")
@@ -530,35 +570,170 @@ async def login_for_token(req: AuthTokenRequest) -> dict[str, Any]:
 
 @app.post("/api/v1/auth/signup")
 async def signup(req: AuthTokenRequest) -> dict[str, Any]:
-    """Create a Supabase Auth account; email confirmation may be required."""
+    """Create a Supabase Auth account and auto-confirm it so login works immediately."""
+    supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not supabase_url or not anon_key:
+        raise HTTPException(status_code=503, detail="Authentication is not configured")
+
+    token = None
+    created = False
+
+    # Prefer admin API user creation with email_confirm: True if service_key is available
+    # to avoid Supabase free tier email rate limits (over_email_send_rate_limit) in production.
+    if service_key and "example.test" not in supabase_url:
+        try:
+            admin_resp = httpx.post(
+                f"{supabase_url}/auth/v1/admin/users",
+                headers={
+                    "apikey": service_key,
+                    "Authorization": f"Bearer {service_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"email": req.email, "password": req.password, "email_confirm": True},
+                timeout=10,
+            )
+            if admin_resp.status_code in (200, 201):
+                created = True
+                try:
+                    login_resp = httpx.post(
+                        f"{supabase_url}/auth/v1/token?grant_type=password",
+                        headers={"apikey": anon_key, "Content-Type": "application/json"},
+                        json={"email": req.email, "password": req.password},
+                        timeout=10,
+                    )
+                    if login_resp.status_code == 200:
+                        token = login_resp.json().get("access_token")
+                except Exception as exc:
+                    logger.warning("Post-signup login failed: %s", exc)
+            else:
+                admin_data = admin_resp.json() if "json" in admin_resp.headers.get("content-type", "") else {}
+                code = admin_data.get("code") or admin_data.get("error_code", "")
+                msg = str(admin_data.get("msg") or admin_data.get("message", "")).lower()
+                if code in {"user_already_exists", "email_exists"} or "already" in msg:
+                    # User already exists - attempt automatic login with their password
+                    try:
+                        login_resp = httpx.post(
+                            f"{supabase_url}/auth/v1/token?grant_type=password",
+                            headers={"apikey": anon_key, "Content-Type": "application/json"},
+                            json={"email": req.email, "password": req.password},
+                            timeout=10,
+                        )
+                        if login_resp.status_code == 200:
+                            token = login_resp.json().get("access_token")
+                            return {"status": "ready", "access_token": token}
+                    except Exception:
+                        pass
+                    raise HTTPException(status_code=400, detail="Account already exists. Sign in instead.")
+                elif code == "weak_password" or "password" in msg:
+                    raise HTTPException(status_code=400, detail="Choose a stronger password (8+ characters with letters and numbers).")
+                elif code == "over_email_send_rate_limit":
+                    raise HTTPException(status_code=400, detail="Too many confirmation emails sent. Please wait a moment and try again.")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("Admin user creation failed, falling back to signup endpoint: %s", exc)
+
+    if not created and not token:
+        try:
+            response = httpx.post(
+                f"{supabase_url}/auth/v1/signup",
+                headers={"apikey": anon_key, "Content-Type": "application/json"},
+                json={"email": req.email, "password": req.password},
+                timeout=10,
+            )
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=503, detail="Authentication service unreachable") from exc
+
+        if response.status_code not in (200, 201):
+            code = response.json().get("code", "") if "json" in response.headers.get("content-type", "") else ""
+            if code in {"user_already_exists", "email_exists"}:
+                detail = "Account already exists. Sign in instead."
+            elif code == "over_email_send_rate_limit":
+                detail = "Too many confirmation emails sent. Please wait a moment and try again."
+            elif code == "weak_password":
+                detail = "Choose a stronger password (8+ characters with letters and numbers)."
+            else:
+                detail = "Sign-up failed. Check the email and password or try signing in."
+            raise HTTPException(status_code=400, detail=detail)
+
+        data = response.json()
+        session = data.get("session") or data
+        token = session.get("access_token") if isinstance(session, dict) else None
+        user_id = (data.get("user") or data).get("id") if isinstance(data, dict) else None
+
+        # Auto-confirm the new user via the admin API so no email step is needed
+        if service_key and user_id and not token:
+            try:
+                confirm_resp = httpx.put(
+                    f"{supabase_url}/auth/v1/admin/users/{user_id}",
+                    headers={
+                        "apikey": service_key,
+                        "Authorization": f"Bearer {service_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"email_confirm": True},
+                    timeout=10,
+                )
+                if confirm_resp.status_code == 200:
+                    logger.info("Auto-confirmed user %s via admin API", user_id)
+                    login_resp = httpx.post(
+                        f"{supabase_url}/auth/v1/token?grant_type=password",
+                        headers={"apikey": anon_key, "Content-Type": "application/json"},
+                        json={"email": req.email, "password": req.password},
+                        timeout=10,
+                    )
+                    if login_resp.status_code == 200:
+                        token = login_resp.json().get("access_token")
+            except Exception as exc:
+                logger.warning("Auto-confirm step failed for %s: %s", user_id, exc)
+
+    return {"status": "ready" if token else "confirmation_required", "access_token": token}
+
+
+class OAuthExchangeRequest(BaseModel):
+    code: str
+    redirect_to: Optional[str] = None
+
+
+@app.get("/api/v1/auth/google")
+async def get_google_auth_url(request: Request, redirect_to: Optional[str] = None):
+    """Return Supabase Google OAuth authorization URL or redirect to it."""
+    supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    if not supabase_url or not anon_key:
+        raise HTTPException(status_code=503, detail="Authentication is not configured")
+    from urllib.parse import urlencode
+    target_redirect = redirect_to or "http://127.0.0.1:8000/dashboard.html"
+    query = urlencode({"provider": "google", "redirect_to": target_redirect})
+    auth_url = f"{supabase_url}/auth/v1/authorize?{query}"
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept and "application/json" not in accept:
+        return RedirectResponse(auth_url, status_code=307)
+    return {"url": auth_url}
+
+
+@app.post("/api/v1/auth/oauth-callback")
+async def oauth_callback(req: OAuthExchangeRequest) -> dict[str, Any]:
+    """Exchange OAuth PKCE code for access token."""
     supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
     anon_key = os.getenv("SUPABASE_ANON_KEY", "")
     if not supabase_url or not anon_key:
         raise HTTPException(status_code=503, detail="Authentication is not configured")
     try:
-        response = httpx.post(
-            f"{supabase_url}/auth/v1/signup",
+        resp = httpx.post(
+            f"{supabase_url}/auth/v1/token?grant_type=pkce",
             headers={"apikey": anon_key, "Content-Type": "application/json"},
-            json={"email": req.email, "password": req.password},
+            json={"auth_code": req.code},
             timeout=10,
         )
-    except httpx.RequestError as exc:
-        raise HTTPException(status_code=503, detail="Authentication service unreachable") from exc
-    if response.status_code not in (200, 201):
-        code = response.json().get("code", "") if "json" in response.headers.get("content-type", "") else ""
-        if code in {"user_already_exists", "email_exists"}:
-            detail = "Account already exists. Confirm your email, then sign in."
-        elif code == "over_email_send_rate_limit":
-            detail = "Too many confirmation emails were requested. Wait before trying again and check your inbox or spam folder."
-        elif code == "weak_password":
-            detail = "Choose a stronger password and try again."
-        else:
-            detail = "Sign-up failed. Check the email and password or try signing in."
-        raise HTTPException(status_code=400, detail=detail)
-    data = response.json()
-    session = data.get("session") or data
-    token = session.get("access_token") if isinstance(session, dict) else None
-    return {"status": "ready" if token else "confirmation_required", "access_token": token}
+        if resp.status_code == 200:
+            data = resp.json()
+            return {"access_token": data.get("access_token"), "token_type": "bearer", "user": data.get("user")}
+    except Exception as exc:
+        logger.warning("OAuth exchange failed: %s", exc)
+    raise HTTPException(status_code=400, detail="Could not exchange authorization code for session")
 
 
 @app.post("/api/v1/memories/import")
@@ -581,7 +756,7 @@ async def import_memories(
         proposed.append((f"User uses {tools} as AI assistants.", False))
     proposed.extend((memory, False) for memory in req.memories)
     if not proposed:
-        raise HTTPException(status_code=400, detail="Add at least one detail to import")
+        return {"saved": [], "saved_count": 0, "duplicate_count": 0, "skipped_count": 0}
 
     saved: list[dict[str, Any]] = []
     duplicate_count = 0

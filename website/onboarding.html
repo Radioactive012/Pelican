@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0e0d0d">
+  <meta name="theme-color" content="#000000">
   <meta name="description" content="Set up your personal memory with Pelican in three quick steps. Import your context, choose where Pelican listens, and never start over again.">
   <link rel="icon" href="./assets/pelican-head.png" type="image/png">
   <link rel="preload" href="./assets/instrument-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -11,13 +11,13 @@
   <style>
     @font-face{font-family:Instrument;src:url("./assets/instrument-sans-latin.woff2") format("woff2");font-style:normal;font-weight:400 700;font-display:swap}
     :root{
-      --paper:#f4f0e8;--ink:#201d1a;--purple:#6840ff;--lime:#c8f075;
-      --line:#2e2820;--soft:#1c1710;--bg:#100d09;
+      --paper:#000000;--ink:#ffffff;--purple:#6840ff;--lime:#c8f075;
+      --line:#222222;--soft:#111111;--bg:#000000;
       --ease:cubic-bezier(.22,1,.36,1);--shell:660px
     }
     *{box-sizing:border-box;margin:0;padding:0}
     html{scroll-behavior:smooth}
-    body{min-height:100vh;background:var(--bg);color:#f0ebe3;font-family:Instrument,Arial,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+    body{min-height:100vh;background:#000000;color:#f0ebe3;font-family:Instrument,Arial,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
     a{color:inherit;text-decoration:none}
     button{font:inherit;cursor:pointer;border:0;background:none;-webkit-tap-highlight-color:transparent}
     input,textarea,select{font:inherit}
@@ -27,12 +27,12 @@
     .mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;font-size:11px;letter-spacing:.04em}
 
     /* ── Grain ── */
-    .page-grain{position:fixed;inset:0;z-index:200;pointer-events:none;opacity:.055;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.86' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.15'/%3E%3C/svg%3E")}
+    .page-grain{position:fixed;inset:0;z-index:200;pointer-events:none;opacity:.05;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.86' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.15'/%3E%3C/svg%3E")}
 
     /* ── Ambient glow ── */
-    .glow{position:fixed;border-radius:50%;filter:blur(140px);pointer-events:none;z-index:0}
-    .glow-1{width:700px;height:700px;background:#7c4a2a;opacity:.09;top:-280px;right:-200px;animation:drift 20s ease-in-out infinite}
-    .glow-2{width:550px;height:550px;background:var(--purple);opacity:.05;bottom:-220px;left:-180px;animation:drift 26s ease-in-out infinite reverse}
+    .glow{position:fixed;border-radius:50%;filter:blur(150px);pointer-events:none;z-index:0}
+    .glow-1{width:700px;height:700px;background:#6840ff;opacity:.06;top:-280px;right:-200px;animation:drift 20s ease-in-out infinite}
+    .glow-2{width:550px;height:550px;background:var(--lime);opacity:.03;bottom:-220px;left:-180px;animation:drift 26s ease-in-out infinite reverse}
     @keyframes drift{0%,100%{transform:translate(0,0)}50%{transform:translate(30px,25px)}}
 
     /* ── Header ── */
@@ -40,13 +40,13 @@
       position:fixed;top:0;left:0;right:0;z-index:100;
       height:58px;padding:0 28px;
       display:flex;align-items:center;justify-content:space-between;
-      background:rgba(16,13,9,.88);
+      background:rgba(0,0,0,.92);
       backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
-      border-bottom:1px solid #2a2118
+      border-bottom:1px solid #1f1f1f
     }
     .ob-logo{font-size:23px;font-weight:600;letter-spacing:-.055em;display:inline-flex;align-items:center;gap:2px}
     .ob-logo img{width:30px;height:30px;object-fit:contain}
-    .ob-back{font-size:13px;color:#6b5e52;display:flex;align-items:center;gap:6px;transition:color .2s}
+    .ob-back{font-size:13px;color:#888888;display:flex;align-items:center;gap:6px;transition:color .2s}
     .ob-back:hover{color:var(--lime)}
     .ob-back svg{transition:transform .2s}
     .ob-back:hover svg{transform:translateX(-3px)}
@@ -95,53 +95,53 @@
     /* ── Step header ── */
     .step-tag{
       display:inline-flex;align-items:center;gap:8px;
-      background:#1a1410;border:1px solid #2e2520;
+      background:#101010;border:1px solid #222222;
       border-radius:30px;padding:5px 14px 5px 10px;
       margin-bottom:26px;width:fit-content
     }
     .step-tag-dot{width:6px;height:6px;border-radius:50%;background:var(--purple)}
-    .step-tag span{font-size:11px;color:#7a6a5e;text-transform:uppercase;letter-spacing:.06em}
-    .step-h{font-size:clamp(34px,5vw,50px);font-weight:600;letter-spacing:-.05em;line-height:.97;margin-bottom:12px}
+    .step-tag span{font-size:11px;color:#888888;text-transform:uppercase;letter-spacing:.06em}
+    .step-h{font-size:clamp(34px,5vw,50px);font-weight:600;letter-spacing:-.05em;line-height:.97;margin-bottom:12px;color:#ffffff}
     .step-h em{font-style:normal;color:var(--lime)}
-    .step-sub{font-size:15px;color:#8a7a6e;line-height:1.5;max-width:500px;margin-bottom:36px}
+    .step-sub{font-size:15px;color:#9e9e9a;line-height:1.5;max-width:500px;margin-bottom:36px}
 
     /* ── Form fields ── */
     .fields{display:flex;flex-direction:column;gap:18px;margin-bottom:36px}
-    .field label{display:block;font-size:11px;color:#6b5e52;text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}
+    .field label{display:block;font-size:11px;color:#888888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}
     .field input,.field select{
       width:100%;height:50px;
-      background:#171210;
-      border:1px solid #2e2520;
+      background:#121212;
+      border:1px solid #262626;
       border-radius:7px;
       padding:0 16px;
       color:#f0ebe3;font-size:15px;
       transition:border-color .25s,box-shadow .25s
     }
-    .field input::placeholder{color:#4a3d35}
-    .field input:focus,.field select:focus{outline:none;border-color:var(--purple);box-shadow:0 0 0 3px rgba(104,64,255,.12)}
+    .field input::placeholder{color:#444444}
+    .field input:focus,.field select:focus{outline:none;border-color:var(--purple);box-shadow:0 0 0 3px rgba(104,64,255,.2)}
     .field select{
       appearance:none;cursor:pointer;color:#f0ebe3;
-      background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23655448' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23888888' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
       background-repeat:no-repeat;background-position:right 14px center
     }
-    .field select option{background:#171210}
+    .field select option{background:#121212;color:#f0ebe3}
 
     /* ── AI tool cards ── */
-    .tools-label{font-size:11px;color:#6b5e52;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+    .tools-label{font-size:11px;color:#888888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
     .tools-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:36px}
     .tool-card{position:relative}
     .tool-card input{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
     .tool-lbl{
       display:flex;flex-direction:column;align-items:center;gap:11px;
       padding:22px 14px 18px;
-      background:#171210;border:1px solid #2e2520;border-radius:10px;
+      background:#101010;border:1px solid #222222;border-radius:10px;
       cursor:pointer;transition:all .3s var(--ease);text-align:center
     }
-    .tool-lbl:hover{border-color:#3d3028;background:#1e1812;transform:translateY(-2px)}
+    .tool-lbl:hover{border-color:#383838;background:#161616;transform:translateY(-2px)}
     .tool-card input:checked + .tool-lbl{
       border-color:var(--purple);
-      background:rgba(104,64,255,.08);
-      box-shadow:0 0 0 3px rgba(104,64,255,.08),0 8px 24px rgba(104,64,255,.1)
+      background:rgba(104,64,255,.1);
+      box-shadow:0 0 0 3px rgba(104,64,255,.15),0 8px 24px rgba(104,64,255,.15)
     }
     /* logo containers */
     .tool-logo-wrap{
@@ -149,16 +149,16 @@
       display:flex;align-items:center;justify-content:center;
       overflow:hidden;position:relative
     }
-    .tool-logo-wrap.chatgpt-bg{background:#0d0d0d}
+    .tool-logo-wrap.chatgpt-bg{background:#080808;border:1px solid #222222}
     .tool-logo-wrap.claude-bg{background:#cc785c}
-    .tool-logo-wrap.gemini-bg{background:#0d0d0d}
+    .tool-logo-wrap.gemini-bg{background:#080808;border:1px solid #222222}
     .tool-logo-wrap svg{width:28px;height:28px}
-    .tool-name{font-size:13px;font-weight:500;color:#a89880;transition:color .2s}
+    .tool-name{font-size:13px;font-weight:500;color:#9e9e9a;transition:color .2s}
     .tool-card input:checked + .tool-lbl .tool-name{color:white}
     .tool-tick{
       position:absolute;top:7px;right:7px;
       width:18px;height:18px;border-radius:50%;
-      background:var(--lime);color:#100d09;
+      background:var(--lime);color:#000000;
       font-size:10px;font-weight:700;
       display:flex;align-items:center;justify-content:center;
       opacity:0;transform:scale(.4);
@@ -171,8 +171,8 @@
     .how-row{
       display:flex;gap:14px;align-items:flex-start;
       padding:14px 16px;
-      background:#171210;border:1px solid #2a2018;border-radius:8px;
-      border-left:2px solid #3d3028;
+      background:#101010;border:1px solid #202020;border-radius:8px;
+      border-left:2px solid #2c2c2c;
       transition:border-left-color .2s
     }
     .how-row:hover{border-left-color:var(--purple)}
@@ -182,31 +182,31 @@
       font-size:11px;font-weight:600;
       display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px
     }
-    .how-txt{font-size:14px;line-height:1.45;color:#666}
-    .how-txt strong{color:#ccc;font-weight:500}
+    .how-txt{font-size:14px;line-height:1.45;color:#888888}
+    .how-txt strong{color:#e0e0e0;font-weight:500}
 
     .prompt-card{
-      background:#111;border:1px solid #1e1e1e;border-radius:10px;
+      background:#0a0a0a;border:1px solid #202020;border-radius:10px;
       position:relative;margin-bottom:22px;overflow:hidden
     }
     .prompt-top{
       display:flex;align-items:center;justify-content:space-between;
-      padding:12px 16px;border-bottom:1px solid #1a1a1a;
+      padding:12px 16px;border-bottom:1px solid #1c1c1c;
       background:#0d0d0d
     }
-    .prompt-top-label{font-size:10px;color:#444;text-transform:uppercase;letter-spacing:.06em}
+    .prompt-top-label{font-size:10px;color:#777777;text-transform:uppercase;letter-spacing:.06em}
     .copy-btn{
       display:flex;align-items:center;gap:6px;
-      background:#1e1e1e;color:#aaa;
+      background:#1a1a1a;color:#aaaaaa;
       border-radius:5px;padding:6px 12px;font-size:12px;
       transition:all .2s
     }
     .copy-btn:hover{background:var(--purple);color:white}
-    .copy-btn.copied{background:var(--lime);color:#0e0d0d}
+    .copy-btn.copied{background:var(--lime);color:#000000}
     .prompt-body{
       padding:18px;
       font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
-      font-size:12px;line-height:1.65;color:#888;
+      font-size:12px;line-height:1.65;color:#aaaaaa;
       white-space:pre-wrap;word-break:break-word;
       max-height:200px;overflow-y:auto;
       scrollbar-width:thin;scrollbar-color:#222 transparent
@@ -214,68 +214,149 @@
     .prompt-body::-webkit-scrollbar{width:4px}
     .prompt-body::-webkit-scrollbar-thumb{background:#252525;border-radius:4px}
 
-    .paste-label{font-size:11px;color:#484848;text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}
+    .paste-label{font-size:11px;color:#888888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}
     .paste-wrap{position:relative}
     .paste-wrap textarea{
       width:100%;min-height:120px;
-      background:#111;border:1px solid #222;border-radius:8px;
+      background:#0d0d0d;border:1px solid #242424;border-radius:8px;
       padding:14px 16px;color:white;font-size:14px;line-height:1.5;
       resize:vertical;transition:border-color .25s,box-shadow .25s
     }
-    .paste-wrap textarea::placeholder{color:#333}
-    .paste-wrap textarea:focus{outline:none;border-color:var(--purple);box-shadow:0 0 0 3px rgba(104,64,255,.1)}
+    .paste-wrap textarea::placeholder{color:#444444}
+    .paste-wrap textarea:focus{outline:none;border-color:var(--purple);box-shadow:0 0 0 3px rgba(104,64,255,.2)}
     .paste-badge{
       position:absolute;top:10px;right:10px;
-      background:#1a1a1a;color:#3d3d3d;border-radius:4px;
+      background:#1a1a1a;color:#777777;border-radius:4px;
       padding:3px 9px;font-size:9px;text-transform:uppercase;letter-spacing:.05em
     }
     .or-sep{
       display:flex;align-items:center;gap:14px;
-      color:#2a2a2a;font-size:12px;margin:20px 0
+      color:#555555;font-size:12px;margin:20px 0
     }
-    .or-sep::before,.or-sep::after{content:"";flex:1;height:1px;background:#1e1e1e}
+    .or-sep::before,.or-sep::after{content:"";flex:1;height:1px;background:#202020}
 
     /* ── Step 3: platforms ── */
     .platforms{display:flex;flex-direction:column;gap:10px;margin-bottom:28px}
     .platform-row{
       display:flex;align-items:center;justify-content:space-between;
       padding:16px 20px;
-      background:#111;border:1px solid #1e1e1e;border-radius:10px;
+      background:#0e0e0e;border:1px solid #202020;border-radius:10px;
       transition:all .3s var(--ease)
     }
-    .platform-row:hover{border-color:#2a2a2a;background:#131313}
-    .platform-row.on{border-color:rgba(104,64,255,.28);background:rgba(104,64,255,.04)}
+    .platform-row:hover{border-color:#333333;background:#141414}
+    .platform-row.on{border-color:rgba(104,64,255,.35);background:rgba(104,64,255,.06)}
     .plat-left{display:flex;align-items:center;gap:14px}
     .plat-logo{
       width:42px;height:42px;border-radius:10px;
       display:flex;align-items:center;justify-content:center;
       overflow:hidden;flex-shrink:0
     }
-    .plat-logo.chatgpt-bg{background:#0d0d0d;border:1px solid #222}
+    .plat-logo.chatgpt-bg{background:#080808;border:1px solid #222222}
     .plat-logo.claude-bg{background:#cc785c}
-    .plat-logo.gemini-bg{background:#0d0d0d;border:1px solid #222}
+    .plat-logo.gemini-bg{background:#080808;border:1px solid #222222}
     .plat-logo svg{width:24px;height:24px}
     .plat-info{display:flex;flex-direction:column;gap:2px}
-    .plat-name{font-size:15px;font-weight:500}
-    .plat-url{font-size:10px;color:#3d3d3d}
+    .plat-name{font-size:15px;font-weight:500;color:#ffffff}
+    .plat-url{font-size:10px;color:#777777}
 
     /* Toggle */
     .tog{position:relative;width:46px;height:26px;flex-shrink:0}
     .tog input{position:absolute;inset:0;opacity:0;cursor:pointer;z-index:2;width:100%;height:100%;margin:0}
     .tog-track{position:absolute;inset:0;background:#1e1e1e;border-radius:13px;border:1px solid #2a2a2a;transition:background .3s,border-color .3s}
-    .tog-thumb{position:absolute;top:3px;left:3px;width:18px;height:18px;background:#333;border-radius:50%;transition:all .3s var(--ease)}
+    .tog-thumb{position:absolute;top:3px;left:3px;width:18px;height:18px;background:#555555;border-radius:50%;transition:all .3s var(--ease)}
     .tog input:checked ~ .tog-track{background:var(--purple);border-color:var(--purple)}
     .tog input:checked ~ .tog-thumb{left:23px;background:white}
 
     .privacy-note{
       display:flex;gap:12px;align-items:flex-start;
       padding:15px 16px;
-      background:rgba(184,255,114,.03);
-      border:1px solid rgba(184,255,114,.1);border-radius:8px
+      background:rgba(184,255,114,.04);
+      border:1px solid rgba(184,255,114,.18);border-radius:8px
     }
     .privacy-icon{color:var(--lime);font-size:17px;flex-shrink:0;margin-top:1px}
-    .privacy-note p{font-size:13px;line-height:1.5;color:#555}
-    .privacy-note strong{color:rgba(184,255,114,.8);font-weight:500}
+    .privacy-note p{font-size:13px;line-height:1.5;color:#aaaaaa}
+    .privacy-note strong{color:var(--lime);font-weight:500}
+
+    /* Segmented Auth Selector */
+    .account-selector{
+      display:flex;background:#121212;border:1px solid #262626;border-radius:8px;padding:3px;margin-top:24px;gap:4px;
+    }
+    .mode-tab{
+      flex:1;height:40px;border-radius:6px;font-size:13px;font-weight:500;color:#888888;transition:all .2s;
+    }
+    .mode-tab.active{
+      background:#262626;color:#ffffff;box-shadow:0 2px 8px #00000088;font-weight:600;
+    }
+    .mode-tab:hover:not(.active){
+      color:#cccccc;
+    }
+    .ob-signin-link{
+      background:none;border:0;color:#9e9e9a;font-size:13px;display:flex;align-items:center;gap:4px;cursor:pointer;transition:color .2s;
+    }
+    .ob-signin-link strong{
+      color:var(--lime);font-weight:600;
+    }
+    .ob-signin-link:hover{
+      color:white;
+    }
+    .logged-in-notice{
+      background:#141414;border:1px solid #282828;border-radius:8px;padding:12px 16px;font-size:13px;color:#aaaaaa;margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+    }
+    .logged-in-notice strong{
+      color:var(--lime);
+    }
+    .logged-in-notice button{
+      color:#ffaaa0;font-size:12px;text-decoration:underline;background:none;border:0;cursor:pointer;
+    }
+
+    /* Quick Sign-in Modal */
+    .ob-modal{
+      border:0;background:transparent;padding:0;margin:auto;max-width:440px;width:calc(100vw - 32px);
+    }
+    .ob-modal::backdrop{
+      background:rgba(0,0,0,.85);backdrop-filter:blur(8px);
+    }
+    .ob-modal-content{
+      background:#0d0d0d;border:1px solid #282828;border-radius:12px;padding:28px 24px;color:#f0ebe3;box-shadow:0 24px 60px #000000ee;
+    }
+    .ob-modal-header{
+      display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;
+    }
+    .ob-modal-header h2{
+      font-size:22px;font-weight:600;letter-spacing:-.03em;color:#ffffff;
+    }
+    .ob-modal-close{
+      background:#1a1a1a;color:#888888;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:14px;
+    }
+    .ob-modal-close:hover{
+      color:white;background:#2a2a2a;
+    }
+    .ob-modal-sub{
+      font-size:13px;color:#888888;margin-bottom:20px;
+    }
+    .ob-error-text{
+      color:#ffaaa0;font-size:13px;min-height:20px;margin-top:10px;
+    }
+    .google-auth-box{display:flex;flex-direction:column;gap:10px;margin:16px 0}
+    .btn-google{
+      display:flex;align-items:center;justify-content:center;gap:12px;
+      width:100%;height:46px;background:#141414;color:#ffffff;
+      border:1px solid #2c2c2c;border-radius:7px;font-size:14px;
+      font-weight:600;cursor:pointer;transition:all .2s var(--ease);
+      font-family:inherit;text-decoration:none;
+    }
+    .btn-google:hover{
+      background:#202020;border-color:#484848;transform:translateY(-1px);
+      box-shadow:0 4px 16px rgba(0,0,0,.6);
+    }
+    .btn-google:active{transform:translateY(0)}
+    .btn-google.outline{
+      background:transparent;border-color:#262626;color:#b0b0b0;font-weight:500;
+    }
+    .btn-google.outline:hover{
+      background:#121212;border-color:#3c3c3c;color:#ffffff;
+    }
+    .btn-google svg{width:18px;height:18px;flex-shrink:0}
 
     /* ── Nav ── */
     .step-nav{
@@ -288,14 +369,15 @@
       display:inline-flex;align-items:center;gap:9px;
       transition:all .28s var(--ease)
     }
-    .btn-back{background:transparent;color:#444;border:1px solid #222}
-    .btn-back:hover{color:white;border-color:#3a3a3a}
+    .btn-back{background:transparent;color:#777777;border:1px solid #2a2a2a}
+    .btn-back:hover{color:white;border-color:#444444}
     .btn-next{background:var(--purple);color:white}
     .btn-next:hover{background:#7a5cff;transform:translateY(-2px);box-shadow:0 8px 22px rgba(104,64,255,.28)}
-    .btn-skip{color:#3a3a3a;font-size:13px;padding:0 12px;height:40px;border-radius:5px}
-    .btn-skip:hover{color:#666}
-    .btn-finish{background:var(--lime);color:#0e0d0d;font-weight:600}
+    .btn-skip{color:#666666;font-size:13px;padding:0 12px;height:40px;border-radius:5px}
+    .btn-skip:hover{color:#aaaaaa}
+    .btn-finish{background:var(--lime);color:#000000;font-weight:600}
     .btn-finish:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(184,255,114,.18)}
+    .btn-finish:disabled{opacity:.55;cursor:wait}
 
     /* ── Success ── */
     .success{
@@ -306,18 +388,18 @@
     .success.active{display:flex}
     .success-spin{
       width:130px;height:130px;
-      border:1px dashed #252525;border-radius:50%;
+      border:1px dashed #282828;border-radius:50%;
       display:flex;align-items:center;justify-content:center;
       font-size:96px;line-height:1;color:var(--lime);
       animation:spin 22s linear infinite;
       margin-bottom:38px
     }
     @keyframes spin{to{transform:rotate(360deg)}}
-    .success h2{font-size:clamp(36px,5vw,52px);font-weight:600;letter-spacing:-.05em;line-height:.97;margin-bottom:14px}
+    .success h2{font-size:clamp(36px,5vw,52px);font-weight:600;letter-spacing:-.05em;line-height:.97;margin-bottom:14px;color:#ffffff}
     .success h2 span{color:var(--lime)}
-    .success p{font-size:15px;color:#555;line-height:1.5;max-width:420px;margin-bottom:38px}
+    .success p{font-size:15px;color:#888888;line-height:1.5;max-width:420px;margin-bottom:38px}
     .btn-cta{
-      background:var(--lime);color:#0e0d0d;
+      background:var(--lime);color:#000000;
       height:54px;padding:0 30px;border-radius:7px;
       font-size:15px;font-weight:600;
       display:inline-flex;align-items:center;gap:12px;
@@ -326,6 +408,8 @@
     .btn-cta:hover{transform:translateY(-3px);box-shadow:0 12px 28px rgba(184,255,114,.2)}
     .btn-cta svg{width:18px;height:18px;transition:transform .2s}
     .btn-cta:hover svg{transform:translate(2px,-2px)}
+    #download-extension{margin-top:16px;color:#888888;font-size:13px;text-decoration:underline}
+    #download-extension:hover{color:var(--lime)}
 
     /* ── Responsive ── */
     @media(max-width:560px){
@@ -335,6 +419,7 @@
       .tool-lbl{flex-direction:row;padding:14px 16px;align-items:center;gap:14px;text-align:left}
       .step-nav{flex-wrap:wrap}
       .p-label{display:none}
+      .ob-signin-link{display:none}
     }
 
     /* ── Inline SVG logos ── */
@@ -355,11 +440,62 @@
     <a class="ob-logo" href="./dashboard.html">
       pelican<img src="./assets/pelican-head.png" alt="">
     </a>
-    <a class="ob-back" href="./dashboard.html">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
-      Back to dashboard
-    </a>
+    <div style="display:flex;align-items:center;gap:16px">
+      <button type="button" class="ob-signin-link" id="quickSignInLink">Already have an account? <strong>Sign in ↗</strong></button>
+      <a class="ob-back" href="./dashboard.html">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        Back to dashboard
+      </a>
+    </div>
   </header>
+
+  <!-- Quick Sign-in Modal -->
+  <dialog id="quickSignInModal" class="ob-modal">
+    <div class="ob-modal-content">
+      <div class="ob-modal-header">
+        <h2>Sign in to Pelican</h2>
+        <button type="button" id="closeModalBtn" class="ob-modal-close" aria-label="Close dialog">✕</button>
+      </div>
+      <p class="ob-modal-sub">Sign in to your account to open your memory vault directly.</p>
+
+      <div class="google-auth-box">
+        <button type="button" class="btn-google" id="modalGoogleSignInBtn">
+          <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.03h3.88c2.27-2.09 3.665-5.17 3.665-9.12z"/>
+            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.03c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.13C3.27 21.43 7.33 24 12 24z"/>
+            <path fill="#FBBC05" d="M5.28 14.29c-.25-.72-.38-1.49-.38-2.29s.13-1.57.38-2.29V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.13z"/>
+            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.27 2.57 1.25 6.58l4.03 3.13c.95-2.83 3.6-4.96 6.72-4.96z"/>
+          </svg>
+          <span>Sign in with Google</span>
+        </button>
+        <button type="button" class="btn-google outline" id="modalGoogleSignUpBtn">
+          <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.03h3.88c2.27-2.09 3.665-5.17 3.665-9.12z"/>
+            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.03c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.13C3.27 21.43 7.33 24 12 24z"/>
+            <path fill="#FBBC05" d="M5.28 14.29c-.25-.72-.38-1.49-.38-2.29s.13-1.57.38-2.29V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.13z"/>
+            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.27 2.57 1.25 6.58l4.03 3.13c.95-2.83 3.6-4.96 6.72-4.96z"/>
+          </svg>
+          <span>Create account with Google</span>
+        </button>
+      </div>
+
+      <div class="or-sep" style="margin:14px 0">or sign in with email</div>
+      <form id="quickSignInForm">
+        <div class="field" style="margin-bottom:14px">
+          <label for="modalEmail">Account email</label>
+          <input id="modalEmail" type="email" autocomplete="username" required placeholder="you@example.com">
+        </div>
+        <div class="field" style="margin-bottom:14px">
+          <label for="modalPassword">Password</label>
+          <input id="modalPassword" type="password" autocomplete="current-password" required placeholder="Your account password">
+        </div>
+        <p id="modalError" role="alert" class="ob-error-text"></p>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button type="submit" id="modalSignInSubmit" class="btn btn-finish" style="flex:1;justify-content:center">Sign in ↗</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
 
   <div class="ob-wrap">
 
@@ -610,10 +746,49 @@
           <p><strong>Your privacy is non-negotiable.</strong> Pelican only ever listens to you — not the AI. Passwords, API keys, anything that looks secret? Ignored completely. Change your mind anytime, no questions asked.</p>
         </div>
 
-        <div class="fields" style="margin-top:26px">
-          <div class="field"><label for="accountEmail">Account email</label><input id="accountEmail" type="email" autocomplete="username" placeholder="you@example.com"></div>
-          <div class="field"><label for="accountPassword">Password</label><input id="accountPassword" type="password" autocomplete="current-password" placeholder="Your account password"></div>
-          <div class="field"><label for="accountMode">Account action</label><select id="accountMode"><option value="signin">Sign in</option><option value="signup">Create an account</option></select></div>
+        <div class="account-selector" role="tablist" aria-label="Account mode">
+          <button type="button" class="mode-tab active" id="tabSignUp" data-mode="signup" role="tab" aria-selected="true">Create account</button>
+          <button type="button" class="mode-tab" id="tabSignIn" data-mode="signin" role="tab" aria-selected="false">Sign in to existing</button>
+        </div>
+        <input type="hidden" id="accountMode" value="signup">
+
+        <div class="google-auth-box" id="step3GoogleBox">
+          <button type="button" class="btn-google" id="step3GoogleSignUpBtn">
+            <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.03h3.88c2.27-2.09 3.665-5.17 3.665-9.12z"/>
+              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.03c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.13C3.27 21.43 7.33 24 12 24z"/>
+              <path fill="#FBBC05" d="M5.28 14.29c-.25-.72-.38-1.49-.38-2.29s.13-1.57.38-2.29V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.13z"/>
+              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.27 2.57 1.25 6.58l4.03 3.13c.95-2.83 3.6-4.96 6.72-4.96z"/>
+            </svg>
+            <span id="step3GoogleSignUpText">Create account with Google</span>
+          </button>
+          <button type="button" class="btn-google outline" id="step3GoogleSignInBtn">
+            <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.03h3.88c2.27-2.09 3.665-5.17 3.665-9.12z"/>
+              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.03c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.13C3.27 21.43 7.33 24 12 24z"/>
+              <path fill="#FBBC05" d="M5.28 14.29c-.25-.72-.38-1.49-.38-2.29s.13-1.57.38-2.29V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.13z"/>
+              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.27 2.57 1.25 6.58l4.03 3.13c.95-2.83 3.6-4.96 6.72-4.96z"/>
+            </svg>
+            <span id="step3GoogleSignInText">Sign in with Google</span>
+          </button>
+        </div>
+
+        <div class="or-sep" style="margin:18px 0 14px">or continue with email</div>
+
+        <div id="loggedInNotice" class="logged-in-notice" hidden>
+          <span>Signed in as <strong id="loggedInEmail"></strong></span>
+          <button type="button" id="switchAccountBtn">Switch account</button>
+        </div>
+
+        <div class="fields" id="accountFields" style="margin-top:20px">
+          <div class="field">
+            <label for="accountEmail">Account email</label>
+            <input id="accountEmail" type="email" autocomplete="username" placeholder="you@example.com">
+          </div>
+          <div class="field">
+            <label for="accountPassword">Password</label>
+            <input id="accountPassword" type="password" autocomplete="current-password" placeholder="Choose a password (8+ characters)">
+          </div>
           <p id="setup-error" role="alert" aria-live="assertive" style="color:#ffaaa0;font-size:13px;min-height:20px"></p>
         </div>
         <div class="step-nav">
@@ -621,7 +796,7 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 5-7 7 7 7"/></svg>
             Back
           </button>
-          <button class="btn btn-finish" data-action="finish-setup">Let's do this 🎉</button>
+          <button class="btn btn-finish" data-action="finish-setup" id="finishBtn">Create account & finish 🎉</button>
         </div>
       </div>
 

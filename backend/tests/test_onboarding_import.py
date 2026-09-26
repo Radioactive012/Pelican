@@ -113,3 +113,15 @@ def test_auth_errors_explain_unconfirmed_email_and_signup_rate_limit(monkeypatch
     assert "Confirm your email" in login.json()["detail"]
     assert signup.status_code == 400
     assert "Too many confirmation emails" in signup.json()["detail"]
+
+
+def test_google_auth_url_generation(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://auth.example.test")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-test-key")
+    with TestClient(app) as client:
+        resp = client.get("/api/v1/auth/google?redirect_to=http://127.0.0.1:8000/dashboard.html")
+    assert resp.status_code == 200
+    url = resp.json().get("url")
+    assert "https://auth.example.test/auth/v1/authorize" in url
+    assert "provider=google" in url
+    assert "redirect_to=http%3A%2F%2F127.0.0.1%3A8000%2Fdashboard.html" in url

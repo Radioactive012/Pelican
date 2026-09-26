@@ -12,13 +12,22 @@
   const text = (id, value) => { byId(id).textContent = value; };
 
   async function storedToken() {
-    return extension ? ((await chrome.storage.local.get('auth_token')).auth_token || '') : (sessionStorage.getItem('pelican_auth_token') || '');
+    return extension
+      ? ((await chrome.storage.local.get('auth_token')).auth_token || '')
+      : (sessionStorage.getItem('pelican_auth_token') || localStorage.getItem('pelican_auth_token') || '');
   }
   async function saveToken(value) {
     token = value || '';
-    if (extension) await chrome.storage.local.set({auth_token: token, backend_url: API});
-    else if (token) sessionStorage.setItem('pelican_auth_token', token);
-    else sessionStorage.removeItem('pelican_auth_token');
+    if (extension) {
+      await chrome.storage.local.set({auth_token: token, backend_url: API});
+    } else if (token) {
+      sessionStorage.setItem('pelican_auth_token', token);
+      localStorage.setItem('pelican_auth_token', token);
+    } else {
+      sessionStorage.removeItem('pelican_auth_token');
+      localStorage.removeItem('pelican_auth_token');
+      localStorage.removeItem('pelican_user_email');
+    }
   }
   async function request(path, options = {}) {
     const headers = Object.assign({'Content-Type': 'application/json'}, options.headers || {});
@@ -228,6 +237,69 @@
     });
     document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => setView(button.dataset.go)));
     byId('memoryFilter').addEventListener('input', renderMemories);
+    async function startGoogleAuth() {
+      text('authError', '');
+      try {
+        const returnUrl = window.location.origin + '/dashboard.html';
+        const res = await fetch(API + '/api/v1/auth/google?redirect_to=' + encodeURIComponent(returnUrl));
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.url) {
+          window.location.href = data.url;
+        } else {
+          throw new Error(data.detail || 'Could not start Google sign in.');
+        }
+      } catch (err) {
+        text('authError', err.message || 'Google sign-in is not available right now.');
+      }
+    }
+
+    async function handleOAuthCallback() {
+      const hash = window.location.hash.substring(1);
+      const hashParams = new URLSearchParams(hash);
+      const queryParams = new URLSearchParams(window.location.search);
+
+      const errorDesc = hashParams.get('error_description') || queryParams.get('error_description') || hashParams.get('error') || queryParams.get('error');
+      if (errorDesc) {
+        history.replaceState(null, '', window.location.pathname);
+        showAuth(decodeURIComponent(errorDesc.replace(/\+/g, ' ')));
+        return;
+      }
+
+      const accessToken = hashParams.get('access_token');
+      if (accessToken) {
+        let email = '';
+        try {
+          const payload = JSON.parse(atob(accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+          email = payload.email || '';
+        } catch {}
+        await saveToken(accessToken);
+        if (email) localStorage.setItem('pelican_user_email', email);
+        history.replaceState(null, '', window.location.pathname);
+        return;
+      }
+
+      const code = queryParams.get('code');
+      if (code) {
+        try {
+          const data = await request('/api/v1/auth/oauth-callback', {
+            method: 'POST',
+            body: JSON.stringify({ code })
+          });
+          if (data.access_token) {
+            await saveToken(data.access_token);
+            if (data.user?.email) localStorage.setItem('pelican_user_email', data.user.email);
+          }
+        } catch (err) {
+          showAuth(err.message || 'OAuth exchange failed.');
+        } finally {
+          history.replaceState(null, '', window.location.pathname);
+        }
+      }
+    }
+
+    byId('dashGoogleSignInBtn')?.addEventListener('click', startGoogleAuth);
+    byId('dashGoogleSignUpBtn')?.addEventListener('click', startGoogleAuth);
+
     byId('authForm').addEventListener('submit', async event => {
       event.preventDefault();
       text('authError', '');
@@ -238,8 +310,10 @@
           const allowed = await chrome.permissions.request({origins: [new URL(API).origin + '/*']});
           if (!allowed) throw new Error('Allow Pelican to connect to your backend to sign in.');
         }
-        const data = await request('/api/v1/auth/token', {method:'POST', body:JSON.stringify({email:byId('email').value.trim(), password:byId('password').value})});
+        const emailVal = byId('email').value.trim();
+        const data = await request('/api/v1/auth/token', {method:'POST', body:JSON.stringify({email:emailVal, password:byId('password').value})});
         await saveToken(data.access_token);
+        localStorage.setItem('pelican_user_email', emailVal);
         byId('password').value = '';
         await loadData();
       } catch (error) { text('authError', error.message); }
@@ -252,9 +326,11 @@
           const allowed = await chrome.permissions.request({origins: [new URL(API).origin + '/*']});
           if (!allowed) throw new Error('Allow Pelican to connect to your backend to create an account.');
         }
-        const data = await request('/api/v1/auth/signup', {method:'POST', body:JSON.stringify({email:byId('email').value.trim(), password:byId('password').value})});
+        const emailVal = byId('email').value.trim();
+        const data = await request('/api/v1/auth/signup', {method:'POST', body:JSON.stringify({email:emailVal, password:byId('password').value})});
         if (!data.access_token) { text('authError', 'Check your email to confirm your account, then sign in.'); return; }
         await saveToken(data.access_token);
+        localStorage.setItem('pelican_user_email', emailVal);
         byId('password').value = '';
         await loadData();
       } catch (error) { text('authError', error.message); }
@@ -280,6 +356,7 @@
         text('recallStatus', 'Approved context copied. Paste it into your AI chat.');
       } catch { text('recallStatus', 'Clipboard unavailable. Try Use Memory in the extension side panel.'); }
     });
+    await handleOAuthCallback();
     token = await storedToken();
     await checkBackend();
     if (token) await loadData(); else showAuth();
