@@ -24,4 +24,3 @@ export interface SiteAdapter {
   attachUseMemoryButton(button: HTMLElement): boolean;
   observeUserMessages(callback: (msg: UserMessageEvent) => void, options?: ObserverOptions): () => void;
 }
-

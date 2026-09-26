@@ -61,7 +61,7 @@ def test_natural_explanation_requests_are_learning_evidence(text, key):
     assert key in [item[0] for item in extract_explanation_evidence(text)]
 
 
-@pytest.mark.parametrize("score,expected", [(0.01, 0), (0.72, 0), (0.81, 1)])
+@pytest.mark.parametrize("score,expected", [(0.01, 0), (0.60, 0), (0.72, 1), (0.81, 1)])
 def test_recall_discards_weak_vector_matches(score, expected):
     class Collection:
         def aggregate(self, pipeline):
@@ -198,6 +198,8 @@ def test_mem0_plaintext_history_is_purged_after_forget():
 
 def test_production_capture_requires_paid_tier_confirmation(monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "mock-gemini-key")
     monkeypatch.delenv("GEMINI_PAID_TIER_CONFIRMED", raising=False)
     app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(user_id="audit-user")
     app.dependency_overrides[get_pref_engine] = lambda: object()

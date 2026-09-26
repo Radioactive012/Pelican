@@ -21,4 +21,3 @@ def test_mem0_history_storage_lifecycle_retention():
     old_memories = [r["old_memory"] for r in report["rows_after_delete"] if r["old_memory"]]
     assert "The project uses MongoDB." in old_memories
     assert "The project uses PostgreSQL." in old_memories
-

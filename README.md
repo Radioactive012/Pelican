@@ -8,15 +8,15 @@ With capture enabled, it distills useful facts and learns your explanation style
 
 ## 1. System Architecture & Boundaries
 
-- **Single Extension UI (`v3/dist`)**: Built with TypeScript for Chrome and Brave (Manifest V3). Features inline prompt injection, a compact side-panel vault with evidence inspection and lifecycle controls (Correct, Block, Forget), and a universal copy/paste fallback route.
-- **Strict Localhost Runtime**: FastAPI backend bound strictly to `127.0.0.1:8000` (`http://localhost:8000`). No public network exposure (`0.0.0.0`), no Render, no Fly.io, and no cloud server hosting.
+- **Pelican extension (`v3/dist`)**: Built with TypeScript for Chrome and Brave (Manifest V3). Includes first-run memory import, a full dashboard, inline prompt insertion, a side-panel vault with Correct, Block, and Forget controls, and a copy/paste fallback.
+- **Local or Render Runtime**: FastAPI binds to `127.0.0.1:8000` by default. The `render.yaml` Blueprint enables explicit public binding for one free HTTPS service that also serves the website and extension ZIP. See [DEPLOY.md](DEPLOY.md).
 - **Single Application Database**: MongoDB Atlas stores Mem0 vector memories and all app-control collections (`observations`, `preferences`, `dedup_events`, `forgotten_preferences`, `forgotten_memory_sources`).
 - **Supabase Auth for Sign-In Only**: Supabase supplies JWT token issuance and validation. No dual-database synchronization; identity is derived solely from verified tokens (`payload.user_id`).
 - **Provider-Aware Model Routing**:
-  - Primary Fact Extractor: OpenRouter GLM 5.3 Flash (`openrouter/glm-5.3-flash`).
+  - Primary Fact Extractor: OpenRouter GLM 5.3 Flash (`z-ai/glm-5.3-flash`).
   - Fallback Fact Extractor: Gemini 2.5 Flash Lite via OpenRouter (`google/gemini-2.5-flash-lite`), activated automatically upon 429 rate limit, 5xx error, or provider timeout.
   - Embedder: `openai/text-embedding-3-small` (1536 dimensions) via OpenRouter.
-  - Validation Pass: Feature-flagged Jev from TypeSafe AI (`ENABLE_JEV_VALIDATION=false` by default).
+  - Validation Pass: Feature-flagged `typesafe/jev-router` through OpenRouter using the same key. It reviews ambiguous candidate memories; live behavior remains to be verified.
 - **Privacy Firewall**:
   - `general`: Automatically eligible for prompt injection (up to 3 general memories).
   - `sensitive`: Demoted to two-phase approval modal (**Allow once** vs **Don't use**).
@@ -59,9 +59,11 @@ Open `.env` and configure the following variables (do NOT commit `.env` to git):
 | `EMBEDDING_PROVIDER` | Embeddings provider (`openrouter`) | `openrouter` |
 | `EMBEDDING_MODEL` | 1536-dimensional embedding model | `openai/text-embedding-3-small` |
 | `EMBEDDING_DIMS` | Vector embedding dimension count | `1536` |
-| `ENABLE_JEV_VALIDATION` | Enable Jev (TypeSafe AI) validation pass | `false` |
-| `JEV_API_KEY` | TypeSafe AI API key (if Jev enabled) | |
-| `OPENROUTER_SPENDING_CAP` | Hard spending limit guard in USD | `1.00` |
+| `ENABLE_JEV_VALIDATION` | Enable selective Jev review via OpenRouter | `false` |
+| `JEV_MODEL` | OpenRouter Jev router ID | `typesafe/jev-router` |
+| `JEV_SPENDING_CAP` | Local known-cost Jev sublimit in USD | `1.00` |
+| `JEV_MAX_CALLS` | Jev request limit per backend session | `20` |
+| `OPENROUTER_SPENDING_CAP` | Local estimated spending guard in USD; also set a hard OpenRouter key limit | `2.00` |
 | `PROVIDER_TIMEOUT_SECONDS` | Provider HTTP timeout in seconds | `30.0` |
 | `PROVIDER_MAX_RETRIES` | Max retries before triggering fallback | `2` |
 | `MONGODB_URI` | MongoDB Atlas connection string | `mongodb+srv://user:pass@cluster.mongodb.net/...` |
@@ -71,7 +73,7 @@ Open `.env` and configure the following variables (do NOT commit `.env` to git):
 | `SUPABASE_URL` | Supabase project API URL | `https://<project-ref>.supabase.co` |
 | `SUPABASE_ANON_KEY` | Supabase project anonymous public key | `eyJhbGciOi...` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (for backend auth verification) | `eyJhbGciOi...` |
-| `HOST` | Backend listener IP (strictly loopback) | `127.0.0.1` |
+| `HOST` | Backend listener IP; public binding requires `PUBLIC_HOSTING=true` | `127.0.0.1` |
 | `PORT` | Backend listener port | `8000` |
 | `MEM0_HISTORY_DB_PATH` | Local SQLite path for Mem0 history | `backend/mem0_history.db` |
 
@@ -90,10 +92,20 @@ In MongoDB Atlas, go to **Atlas Search & Vector Search** on the `memories` colle
     {
       "type": "filter",
       "path": "payload.user_id"
+    },
+    {
+      "type": "filter",
+      "path": "payload.agent_id"
+    },
+    {
+      "type": "filter",
+      "path": "payload.run_id"
     }
   ]
 }
 ```
+
+Atlas Free has a small search-index quota. Reuse or repair the named scoped vector index when possible; inspect existing indexes before creating another. Do not delete an existing index automatically. A passing `/health` alone does not prove vector search works.
 
 ---
 
@@ -140,7 +152,7 @@ Open `http://127.0.0.1:8000/health` in your browser. You should receive:
 
 ```json
 {
-  "status": "healthy",
+  "status": "ok",
   "version": "3.0.0"
 }
 ```
@@ -158,18 +170,20 @@ Open `http://127.0.0.1:8000/ready` to verify that both MongoDB Atlas and Supabas
 3. Click the **Load unpacked** button.
 4. Select the directory:
    `<path-to-repo>/context-passport/v3/dist`
-5. The **Context Passport** extension will appear in your extensions list.
-6. Click the Extensions puzzle icon in your browser toolbar and pin **Context Passport** for easy access.
+5. **Pelican** appears in your extensions list and opens the first-run memory setup page.
+6. Click the Extensions puzzle icon in your browser toolbar and pin **Pelican** for easy access.
+
+For a hosted demo, download the ZIP from the live site's **Try Pelican** section, unzip it, and load that folder. It is stamped with the live backend URL. See [DEPLOY.md](DEPLOY.md) for the full release flow and self-test.
 
 ---
 
 ## 7. Extension Usage & Configuration
 
 1. **Open the Side Panel**:
-   Click the Context Passport icon in the browser toolbar.
+   Click the Pelican icon in the browser toolbar. Use **My dashboard** for the full Pelican view or **Add my memories** to revisit setup.
 2. **Configure Settings**:
    - Go to the **Settings** tab.
-   - **Backend URL**: Keep as `http://localhost:8000` (or `http://127.0.0.1:8000`).
+   - **Backend URL**: Use the website's Render HTTPS URL for the hosted release, or `http://127.0.0.1:8000` locally. A ZIP downloaded from the live website is preconfigured.
    - **Authentication**: Sign in using your Supabase account email and password, or provide a test Bearer token.
    - **Site Capture Toggles**: Capture is **OFF by default**. Turn ON capture for the sites you wish to monitor (**ChatGPT**, **Claude**, or **Gemini Web**).
 3. **Capture Memories**:
@@ -188,6 +202,14 @@ Open `http://127.0.0.1:8000/ready` to verify that both MongoDB Atlas and Supabas
    - Click **Forget** to delete completely and tombstone the source against retry duplication.
 6. **Sign Out**:
    - Click **Sign out** in the Settings tab. All tokens, email, and on-screen memories are immediately purged from local state.
+
+### First-run import and dashboard
+
+Open `http://127.0.0.1:8000/onboarding.html` or the extension's first-run tab. Enter an account email and password, then add your details or paste one memory per line from an AI export. Create a Supabase account from the same form if needed; if email confirmation is enabled, confirm the email and sign in. Setup reports success only after the backend confirms each new memory is in the vault. Name and age are sensitive. Recognizable credentials are skipped. Capture remains off until you enable each site from the extension.
+
+Open the website's `/dashboard.html` or click **My dashboard** in the side panel. The dashboard reads the authenticated vault, supports correction, block, forget, search, learned preferences, and manual recall with a separate choice for sensitive details. A local session requires the local backend to stay running; the hosted release uses the Render backend.
+
+Run `npm run test:v3` and `APP_ENV=test ALLOW_TEST_AUTH=true PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests -q` before a demo. The first-run flow and dashboard have browser DOM tests, and the import endpoint has vault, recall, duplicate, isolation, and secret-screening tests. Complete a final unpacked Chrome/Brave run with a demo account before presenting.
 
 ---
 
@@ -228,4 +250,10 @@ npm run test:v3
 
 # Run the complete backend test suite offline
 APP_ENV=test ALLOW_TEST_AUTH=true ALLOW_OFFLINE_EMBEDDINGS=true PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests/ -q
+
+# Optional, explicit live integration run after credentials are configured
+npm run test:integration
+
+# Live model comparison only after setting an OpenRouter key spending limit
+PYTHONPATH=backend backend/.venv/bin/python backend/benchmark_routing.py
 ```

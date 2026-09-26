@@ -30,10 +30,8 @@ class Settings:
     embedding_model: str
     embedding_dims: int
 
-    # Jev Validation Pass (TypeSafe AI)
+    # Jev Validation Pass (TypeSafe AI via OpenRouter)
     enable_jev_validation: bool
-    jev_api_key: str
-    jev_api_url: str
 
     # Reliability & Cost Guards
     openrouter_spending_cap: float
@@ -56,6 +54,9 @@ class Settings:
     # Network & Localhost Runtime
     host: str = "127.0.0.1"
     port: int = 8000
+    jev_spending_cap: float = 1.00
+    jev_max_calls: int = 20
+    jev_model: str = "typesafe/jev-router"
 
 
 def load_settings(
@@ -99,9 +100,7 @@ def load_settings(
         if not openrouter_key:
             raise RuntimeError("Missing required environment variable: OPENROUTER_API_KEY")
 
-    jev_key = os.getenv("JEV_API_KEY", "").strip()
-    if require_model_keys and enable_jev and not jev_key:
-        raise RuntimeError("Missing required environment variable: JEV_API_KEY")
+    jev_model = os.getenv("JEV_MODEL", "typesafe/jev-router").strip() or "typesafe/jev-router"
 
     raw_host = os.getenv("HOST", "127.0.0.1").strip()
     # Reject 0.0.0.0 and wildcard binding; strictly enforce loopback
@@ -121,9 +120,8 @@ def load_settings(
         embedding_model=os.getenv("EMBEDDING_MODEL", "openai/text-embedding-3-small"),
         embedding_dims=int(os.getenv("EMBEDDING_DIMS", "1536")),
         enable_jev_validation=enable_jev,
-        jev_api_key=jev_key,
-        jev_api_url=os.getenv("JEV_API_URL", "https://api.typesafe.ai/v1/systemone"),
-        openrouter_spending_cap=float(os.getenv("OPENROUTER_SPENDING_CAP", "4.50")),
+        jev_model=jev_model,
+        openrouter_spending_cap=float(os.getenv("OPENROUTER_SPENDING_CAP", "2.00")),
         provider_timeout_seconds=float(os.getenv("PROVIDER_TIMEOUT_SECONDS", "30.0")),
         provider_max_retries=int(os.getenv("PROVIDER_MAX_RETRIES", "2")),
         gemini_api_key=gemini_key,
@@ -137,4 +135,6 @@ def load_settings(
         history_db_path=str(history_path),
         host=host,
         port=port,
+        jev_spending_cap=float(os.getenv("JEV_SPENDING_CAP", "1.00")),
+        jev_max_calls=int(os.getenv("JEV_MAX_CALLS", "20")),
     )

@@ -3,10 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Context Passport</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Pelican — Your memory</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -14,18 +11,15 @@
     <!-- Top Brand Header -->
     <header class="cp-header">
       <div class="cp-brand">
-        <div class="cp-brand-logo">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-          </svg>
-        </div>
+        <div class="cp-brand-logo"><img src="assets/pelican-head.png" alt=""></div>
         <div class="cp-brand-text">
-          <div class="cp-brand-title">Context Passport</div>
+          <div class="cp-brand-title">pelican</div>
           <div class="cp-brand-sub">Your memory, your rules</div>
         </div>
       </div>
       <div id="connection-badge" class="cp-badge cp-badge-neutral">Checking...</div>
     </header>
+    <div class="cp-quick-links"><button id="open-dashboard-btn" type="button">My dashboard ↗</button><button id="open-onboarding-btn" type="button">Add my memories +</button></div>
 
     <!-- Navigation Tabs -->
     <nav class="cp-nav" role="tablist" aria-label="Context Passport Views">
@@ -192,8 +186,8 @@
       </div>
 
       <div class="cp-form-group">
-        <label for="setting-backend-url" class="cp-label">FastAPI Backend URL</label>
-        <input type="text" id="setting-backend-url" class="cp-input" value="http://localhost:8000">
+        <label for="setting-backend-url" class="cp-label">Backend URL</label>
+        <input type="url" id="setting-backend-url" class="cp-input" value="http://127.0.0.1:8000" spellcheck="false">
       </div>
 
       <div class="cp-form-group">
@@ -231,7 +225,7 @@
           <strong>Supported Sites:</strong> Active strictly on <code>chatgpt.com</code>, <code>claude.ai</code>, and <code>gemini.google.com</code>.
         </div>
         <div class="cp-perm-item">
-          <strong>Loopback Only:</strong> Connects exclusively to <code>http://127.0.0.1:8000</code>. No public cloud backend.
+          <strong>Backend:</strong> Connects to the configured HTTPS service or to your local server for development.
         </div>
         <div class="cp-perm-item">
           <strong>Secret Screener:</strong> Recognized API keys, tokens, and passwords are automatically dropped client-side.
@@ -241,7 +235,7 @@
 
     <!-- Footer -->
     <footer class="cp-footer">
-      <span>Context Passport v3.0 • Your memory, under your control</span>
+      <span>Pelican v3.0 • Your memory, under your control</span>
     </footer>
   </div>
 

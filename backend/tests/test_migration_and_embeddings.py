@@ -265,8 +265,6 @@ def test_rejection_of_mixed_vector_spaces(mongo_client):
         embedding_model="openai/text-embedding-3-small",
         embedding_dims=1536,
         enable_jev_validation=settings.enable_jev_validation,
-        jev_api_key=settings.jev_api_key,
-        jev_api_url=settings.jev_api_url,
         openrouter_spending_cap=settings.openrouter_spending_cap,
         provider_timeout_seconds=settings.provider_timeout_seconds,
         provider_max_retries=settings.provider_max_retries,
@@ -324,6 +322,30 @@ def test_rejection_of_mixed_vector_spaces(mongo_client):
         assert f"gemini-mem-{user_id}" not in returned_ids
     finally:
         manager.delete_all(user_id)
+
+
+def test_mixed_space_atlas_top_k_cannot_hide_older_compatible_memory(mongo_client, monkeypatch):
+    settings = load_settings(require_gemini=False)
+    user_id = f"test-mixed-topk-{uuid.uuid4().hex[:6]}"
+    manager = MemoryManager(settings)
+    compatible_id = f"openai-{user_id}"
+    incompatible_id = f"gemini-{user_id}"
+    manager.collection.insert_one({
+        "_id": compatible_id,
+        "embedding": generate_deterministic_embedding("User loves Rust and WebAssembly"),
+        "payload": {"user_id": user_id, "data": "User loves Rust and WebAssembly", "classification": "general", "status": "active", "embedding_model": settings.embedding_model, "created_at": "2026-09-01T00:00:00Z"},
+    })
+    manager.collection.insert_one({
+        "_id": incompatible_id,
+        "embedding": generate_deterministic_embedding("User loves Python and Django"),
+        "payload": {"user_id": user_id, "data": "User loves Python and Django", "classification": "general", "status": "active", "embedding_model": "models/gemini-embedding-001", "created_at": "2026-09-01T00:00:00Z"},
+    })
+    incompatible = manager.collection.find_one({"_id": incompatible_id})
+    incompatible["score"] = 0.99
+    monkeypatch.setattr(manager.collection, "aggregate", lambda _pipeline: [incompatible])
+
+    result = manager.search("User loves Rust and WebAssembly", user_id=user_id, top_k=1)
+    assert [item["id"] for item in result["general_memories"]] == [compatible_id]
 
 
 def test_recent_write_catchup_respects_embedding_model(mongo_client):

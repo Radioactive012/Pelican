@@ -23,7 +23,22 @@ from security import classify_text, contains_secret, redacted_evidence_excerpt
 from settings import Settings, load_settings
 
 logger = logging.getLogger(__name__)
-MIN_MEMORY_SCORE = float(os.getenv("MIN_MEMORY_SCORE", "0.78"))
+# Calibrated on the 2026-09-26 live 1536-dimension OpenRouter embedding benchmark:
+# relevant scores 0.6706-0.8646, maximum irrelevant score 0.5974.
+MIN_MEMORY_SCORE = float(os.getenv("MIN_MEMORY_SCORE", "0.63"))
+
+_AMBIGUOUS_MEMORY_PHRASES = (
+    "maybe", "might", "perhaps", "probably", "for now", "for this task",
+    "for this page", "for this project", "this time", "just today", "tomorrow",
+    "next week", "temporarily", "one time", "once", "i think",
+    "uncertain", "not sure", "unconfirmed", "tentative", "provisional", "speculative",
+)
+
+
+def needs_jev_review(source_text: str, candidate: str) -> bool:
+    """Review uncertain or task-scoped facts before they become durable memory."""
+    combined = f"{source_text} {candidate}".lower()
+    return "?" in source_text or any(phrase in combined for phrase in _AMBIGUOUS_MEMORY_PHRASES)
 
 
 def generate_deterministic_embedding(text: str, dims: int = 1536) -> List[float]:
@@ -128,7 +143,8 @@ class MemoryManager:
         embedder: Optional[Any] = None,
         validator: Optional[Any] = None,
     ):
-        allow_offline = os.getenv("ALLOW_OFFLINE_EMBEDDINGS", "false").lower() == "true"
+        live_integration = os.getenv("RUN_INTEGRATION_TESTS", "false").lower() == "true"
+        allow_offline = os.getenv("ALLOW_OFFLINE_EMBEDDINGS", "false").lower() == "true" and not live_integration
         self._allow_offline = allow_offline
         self.settings = settings or load_settings(require_gemini=not allow_offline and os.getenv("LLM_PROVIDER") == "gemini")
         VectorStoreFactory.provider_to_class["mongodb"] = "scoped_mongodb.ScopedMongoDB"
@@ -155,7 +171,16 @@ class MemoryManager:
         self._genai_client = None
         self._openrouter_embedder = None
 
-        if provider == "openrouter" and has_openrouter:
+        if self._allow_offline or (os.getenv("APP_ENV", "").lower() == "test" and not live_integration):
+            from providers import create_extractor, create_embedder, create_validator
+            if self.extractor is None:
+                self.extractor = create_extractor(self.settings)
+            if self.embedder is None:
+                self.embedder = create_embedder(self.settings)
+            if self.validator is None:
+                self.validator = create_validator(self.settings)
+            self.memory = None
+        elif provider == "openrouter" and has_openrouter:
             self.memory = Memory.from_config(build_mem0_config(self.settings))
             from providers import OpenRouterEmbedder, OpenRouterExtractor
             if self.embedder is None:
@@ -309,14 +334,24 @@ class MemoryManager:
                     logger.info("Screened secret credential from extracted fact candidate: %s", user_id)
                     continue
 
-                fact_classification = classify_text(clean_fact)
-                if validator is not None and validator.is_enabled():
+                # An extractor may remove the uncertainty or health wording from
+                # a candidate. Preserve the original message's privacy label.
+                fact_classification = "sensitive" if classification == "sensitive" else classify_text(clean_fact)
+                if needs_jev_review(text, clean_fact):
+                    if validator is None or not validator.is_enabled():
+                        logger.info("Skipped ambiguous memory candidate without Jev review")
+                        continue
                     try:
-                        v_res = validator.validate(clean_fact)
-                        if v_res.classification in ("general", "sensitive"):
-                            fact_classification = v_res.classification
+                        v_res = validator.validate(clean_fact, context={"source_text": text})
                     except Exception as v_exc:
-                        logger.warning("Validator pass error (%s); falling back to rule-based", v_exc)
+                        logger.warning("Jev review failed (%s); candidate skipped", type(v_exc).__name__)
+                        continue
+                    if not v_res.is_valid or v_res.classification not in ("general", "sensitive"):
+                        logger.info("Jev rejected ambiguous memory candidate")
+                        continue
+                    # Jev can promote sensitivity, but rules retain the final veto.
+                    if v_res.classification == "sensitive":
+                        fact_classification = "sensitive"
 
                 # Rule-based allergies and sensitive keywords always enforce sensitive
                 if classify_text(clean_fact) == "sensitive":
@@ -428,6 +463,51 @@ class MemoryManager:
             ]
         }
 
+    def add_explicit_fact(
+        self,
+        text: str,
+        user_id: str,
+        *,
+        sensitive: bool = False,
+    ) -> Dict[str, Any]:
+        """Save one user-confirmed onboarding fact in the normal recall store."""
+        clean_text = " ".join(text.split()).strip()
+        if not clean_text or len(clean_text) > 500:
+            raise ValueError("Imported memories must contain 1–500 characters")
+        if contains_secret(clean_text):
+            return {"status": "skipped", "reason": "secret_credential_screened"}
+
+        normalized = clean_text.casefold()
+        existing = self.collection.find_one({
+            "payload.user_id": user_id,
+            "payload.status": "active",
+            "payload.normalized_text": normalized,
+        })
+        if existing:
+            return {"status": "duplicate", "id": str(existing["_id"])}
+
+        classification = "sensitive" if sensitive or classify_text(clean_text) == "sensitive" else "general"
+        vector = self.embed_text(clean_text)
+        doc_id = str(uuid.uuid4())
+        self.collection.insert_one({
+            "_id": doc_id,
+            "text": clean_text,
+            "embedding": vector,
+            "payload": {
+                "user_id": user_id,
+                "data": clean_text,
+                "normalized_text": normalized,
+                "classification": classification,
+                "status": "active",
+                "embedding_model": self.active_embedding_model,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "source_site": "manual",
+                "source_kind": "onboarding",
+                "support_excerpt": redacted_evidence_excerpt(clean_text, sensitive=classification == "sensitive"),
+            },
+        })
+        return {"status": "saved", "id": doc_id, "text": clean_text, "classification": classification}
+
     def search(
         self,
         query: str,
@@ -468,13 +548,25 @@ class MemoryManager:
         # Atlas indexes new writes and updates asynchronously. Even when older candidates
         # exist, include direct-scored recent documents (created or updated) so a fresh or
         # corrected fact is immediately available during recall.
+        active_model = self.active_embedding_model
+        mixed_spaces = False
+        if active_model is not None and hasattr(self.collection, "count_documents"):
+            try:
+                mixed_spaces = self.collection.count_documents({
+                    "payload.user_id": user_id,
+                    "payload.embedding_model": {"$ne": active_model},
+                }) > 0
+            except Exception:
+                # Search still applies a strict model check below.
+                pass
+
         direct_query: Dict[str, Any] = {"payload.user_id": user_id, "payload.status": "active"}
-        if candidates:
+        if candidates and not mixed_spaces:
             cutoff = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
             direct_query["payload.created_at"] = {"$gte": cutoff}
         user_docs = list(self.collection.find(direct_query))
 
-        if candidates:
+        if candidates and not mixed_spaces:
             try:
                 updated_docs = list(self.collection.find({
                     "payload.user_id": user_id,
@@ -489,7 +581,6 @@ class MemoryManager:
                 pass
 
         # Direct-scored recent documents must strictly match the active embedding model space
-        active_model = self.active_embedding_model
         if active_model is not None:
             user_docs = [
                 d for d in user_docs
@@ -563,15 +654,6 @@ class MemoryManager:
             # If text indicates allergy or uncertain, enforce sensitive
             if classify_text(text_content) == "sensitive":
                 classification = "sensitive"
-
-            validator = getattr(self, "validator", None)
-            if validator is not None and validator.is_enabled():
-                try:
-                    v_res = validator.validate(text_content)
-                    if v_res.classification == "sensitive":
-                        classification = "sensitive"
-                except Exception:
-                    pass
 
             memory_obj = {
                 "id": str(doc["_id"]),
@@ -758,7 +840,7 @@ class MemoryManager:
             if isinstance(self.memory, Memory):
                 raise RuntimeError("Mem0 history database is unavailable for purge")
             return  # Lightweight fakes used by ownership unit tests have no history.
-        history_db = self.memory.db 
+        history_db = self.memory.db
         with history_db._lock:
             history_db.connection.execute("DELETE FROM history WHERE memory_id = ?", (memory_id,))
             history_db.connection.commit()

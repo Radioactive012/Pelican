@@ -351,7 +351,12 @@ def test_jev_validator_disabled_by_default():
 
 def test_jev_validator_enabled_flow():
     def mock_handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"decision": True, "confidence": 0.95})
+        assert request.url == "https://openrouter.ai/api/v1/chat/completions"
+        assert request.headers["authorization"] == "Bearer jev-key-123"
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": '{"keep":true,"classification":"sensitive","confidence":0.95,"evidence_quote":"severe peanut allergy","reason":"durable"}'}}],
+            "usage": {"cost": 0.001},
+        })
 
     transport = MockHTTPTransport(mock_handler)
     client = httpx.Client(transport=transport)

@@ -1,36 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
-  <defs>
-    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(1000 70) rotate(135) scale(540)">
-      <stop stop-color="#27477c" stop-opacity=".55"/>
-      <stop offset="1" stop-color="#0a0a0a" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
-  <rect width="1200" height="630" fill="#0a0a0a"/>
-  <rect width="1200" height="630" fill="url(#glow)"/>
-  <g transform="translate(72 60) scale(.78)" fill="none" stroke="#f5f5f5" stroke-width="4">
-    <path d="M17 21c6.4-8 19.2-9.6 27.4-3l14 7.2-16 4c-1.2 12-8.8 20-21 20C12 49.2 6 42.8 6 35.2c0-6 3.6-11.6 11-14.2Z" stroke-linejoin="round"/>
-    <circle cx="35" cy="21.4" r="2.4" fill="#73a7ff" stroke="none"/>
-    <path d="m42.4 29.2 14.4-3.6-13.4 7" stroke="#73a7ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
-  <text x="132" y="101" fill="#f5f5f5" font-family="Arial, sans-serif" font-size="26" font-weight="600">pelican</text>
-  <text x="72" y="248" fill="#f5f5f5" font-family="Arial, sans-serif" font-size="72" font-weight="500" letter-spacing="-3">Your context,</text>
-  <text x="72" y="326" fill="#f5f5f5" font-family="Arial, sans-serif" font-size="72" font-weight="500" letter-spacing="-3">across every AI.</text>
-  <text x="74" y="386" fill="#a9a9ad" font-family="Arial, sans-serif" font-size="24">Privacy-first memory for ChatGPT, Claude, and Gemini.</text>
-  <g transform="translate(740 158)">
-    <rect width="386" height="310" rx="12" fill="#0d0d0f" stroke="#343438"/>
-    <path d="M0 52H386" stroke="#343438"/>
-    <circle cx="24" cy="26" r="6" fill="#ef6a5e"/>
-    <circle cx="44" cy="26" r="6" fill="#e3b341"/>
-    <circle cx="64" cy="26" r="6" fill="#64c466"/>
-    <text x="28" y="96" fill="#73a7ff" font-family="monospace" font-size="18">$</text>
-    <text x="52" y="96" fill="#c4c4c7" font-family="monospace" font-size="18">recall --site claude</text>
-    <rect x="28" y="126" width="330" height="70" rx="8" fill="#17171a" stroke="#343438"/>
-    <text x="46" y="152" fill="#73a7ff" font-family="Arial, sans-serif" font-size="11" font-weight="700">NEW DRAFT</text>
-    <text x="46" y="178" fill="#b9b9bd" font-family="Arial, sans-serif" font-size="16">Explain vector search with an example.</text>
-    <rect x="28" y="216" width="330" height="66" fill="#172039"/>
-    <rect x="28" y="216" width="3" height="66" fill="#73a7ff"/>
-    <text x="46" y="243" fill="#f5f5f5" font-family="Arial, sans-serif" font-size="16">2 relevant memories prepared</text>
-    <text x="46" y="265" fill="#85858b" font-family="Arial, sans-serif" font-size="13">General context only · ready to use</text>
-  </g>
-  <text x="74" y="554" fill="#68686e" font-family="Arial, sans-serif" font-size="18">OPEN SOURCE · PRIVACY FIRST</text>
+  <rect width="1200" height="630" fill="#f4f4f2"/>
+  <path d="M600 0v630" stroke="#e0e0dc"/>
+  <rect x="330" y="26" width="540" height="48" rx="5" fill="#201d1d"/>
+  <path d="M346 50h20m-20 5h20" stroke="#f4f4f2" stroke-width="2"/>
+  <text x="379" y="56" fill="#f4f4f2" font-family="Helvetica Neue,Arial,sans-serif" font-size="16">Menu</text>
+  <text x="536" y="58" fill="#f4f4f2" font-family="Helvetica Neue,Arial,sans-serif" font-weight="bold" font-size="27" letter-spacing="-2">pelican</text>
+  <rect x="783" y="32" width="78" height="36" rx="3" fill="#b8ff72"/>
+  <text x="801" y="55" fill="#201d1d" font-family="Helvetica Neue,Arial,sans-serif" font-size="16">Try it</text>
+  <rect x="330" y="79" width="540" height="18" fill="#b8ff72"/>
+  <text x="343" y="92" fill="#201d1d" font-family="monospace" font-size="9">✳ MEET PELICAN  ✳  PICK UP WHERE YOU LEFT OFF  ✳  YOUR MEMORIES, YOUR CHOICE</text>
+  <text x="600" y="165" text-anchor="middle" fill="#201d1d" font-family="monospace" font-size="13" letter-spacing="2">PELICAN / YOUR MEMORY FOR AI</text>
+  <text x="600" y="338" text-anchor="middle" fill="#201d1d" font-family="Helvetica Neue,Arial,sans-serif" font-weight="600" font-size="99" letter-spacing="-5">Stop starting over<tspan fill="#6840ff">.</tspan></text>
+  <text x="600" y="409" text-anchor="middle" fill="#201d1d" font-family="Helvetica Neue,Arial,sans-serif" font-size="26">Your details, ready for the next conversation.</text>
+  <g transform="translate(125 500) rotate(-8)"><rect width="290" height="195" rx="5" fill="#201d1d"/><rect x="6" y="6" width="278" height="158" fill="#6840ff"/><text x="25" y="39" fill="white" font-family="monospace" font-size="13">01 / CAPTURE</text><rect x="42" y="67" width="213" height="57" rx="7" fill="#f4f4f2"/><text x="55" y="94" fill="#201d1d" font-family="Helvetica Neue,Arial,sans-serif" font-size="15">Remember what matters.</text></g>
+  <g transform="translate(455 475)"><rect width="290" height="195" rx="5" fill="#201d1d"/><rect x="6" y="6" width="278" height="158" fill="#101010"/><text x="24" y="38" fill="white" font-family="monospace" font-size="13">02 / REMEMBER</text><text x="145" y="133" text-anchor="middle" fill="#b8ff72" font-family="Helvetica Neue,Arial,sans-serif" font-size="110">✳</text></g>
+  <g transform="translate(785 500) rotate(8)"><rect width="290" height="195" rx="5" fill="#201d1d"/><rect x="6" y="6" width="278" height="158" fill="#b8ff72"/><text x="25" y="39" fill="#201d1d" font-family="monospace" font-size="13">03 / APPROVE</text><rect x="42" y="67" width="213" height="57" rx="7" fill="#f4f4f2"/><text x="55" y="94" fill="#201d1d" font-family="Helvetica Neue,Arial,sans-serif" font-size="15">Your choice, every time.</text></g>
 </svg>

@@ -6,7 +6,7 @@ import { ContextPassportApiClient, BackendMemoryDoc, BackendPreferenceDoc } from
 import { applyMemoryBlockToDraft, formatMemoryBlock, MemoryItem, PreferenceItem } from '../core/injection';
 import { containsSecret } from '../core/screener';
 import { screenRecall } from '../core/recall';
-import { getAllSettings, getSetting, isSiteCaptureEnabled, setSetting, setSiteCaptureEnabled } from '../core/storage';
+import { DEFAULT_BACKEND_URL, getAllSettings, getSetting, isSiteCaptureEnabled, setSetting, setSiteCaptureEnabled } from '../core/storage';
 
 let apiClient: ContextPassportApiClient;
 
@@ -33,6 +33,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   initVault();
   initPreferences();
   initFallback();
+  document.getElementById('open-dashboard-btn')?.addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
+  });
+  document.getElementById('open-onboarding-btn')?.addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('onboarding.html') });
+  });
 });
 
 // Tab Navigation & Keyboard Switching
@@ -141,7 +147,7 @@ async function initSettings(settings: any) {
     });
   }
 
-  if (urlInput) urlInput.value = settings.backend_url || 'http://127.0.0.1:8000';
+  if (urlInput) urlInput.value = settings.backend_url || DEFAULT_BACKEND_URL;
   if (tokenInput) tokenInput.value = settings.auth_token || '';
   if (emailInput) emailInput.value = settings.user_email || '';
 
@@ -157,7 +163,7 @@ async function initSettings(settings: any) {
     }
     signInBtn.disabled = true;
     try {
-      const backendUrl = urlInput?.value.trim() || 'http://localhost:8000';
+      const backendUrl = urlInput?.value.trim() || DEFAULT_BACKEND_URL;
       await ensureBackendPermission(backendUrl);
       apiClient.setBackendUrl(backendUrl);
       const token = await apiClient.login(email, password);
@@ -201,7 +207,7 @@ async function initSettings(settings: any) {
 
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
-      const newUrl = urlInput?.value.trim() || 'http://localhost:8000';
+      const newUrl = urlInput?.value.trim() || DEFAULT_BACKEND_URL;
       const newToken = tokenInput?.value.trim() || '';
 
       try { await ensureBackendPermission(newUrl); }
@@ -302,7 +308,7 @@ async function loadVaultMemories() {
       actionCallback = () => switchToTab('settings');
     } else if (isOffline) {
       title = 'Backend server offline';
-      desc = 'Could not reach FastAPI backend at <code>http://127.0.0.1:8000</code>. Verify the server is running.';
+      desc = 'Could not reach the configured backend. Check the backend URL in Settings and verify it is running.';
     }
 
     listEl.innerHTML = `
@@ -482,7 +488,7 @@ async function loadPreferences() {
       actionCallback = () => switchToTab('settings');
     } else if (isOffline) {
       title = 'Backend server offline';
-      desc = 'Could not reach FastAPI backend at <code>http://127.0.0.1:8000</code>. Verify the server is running.';
+      desc = 'Could not reach the configured backend. Check the backend URL in Settings and verify it is running.';
     }
 
     listEl.innerHTML = `

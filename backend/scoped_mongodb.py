@@ -143,7 +143,7 @@ class ScopedMongoDB(MongoDB):
         try:
             documents = list(self.collection.aggregate(pipeline))
         except Exception:
-            logger.exception("Scoped vector search failed for query %r", query)
+            logger.exception("Scoped vector search failed")
             raise
         return [
             OutputData(id=str(doc["_id"]), score=doc.get("score"), payload=doc.get("payload"))

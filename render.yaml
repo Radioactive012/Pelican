@@ -11,13 +11,35 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.15
       - key: BUILD_MARKER
-        value: context-passport-v3-api-001
-      - key: GEMINI_EXTRACTION_MODEL
-        value: gemini-2.5-flash
-      - key: GEMINI_EMBEDDING_MODEL
-        value: models/gemini-embedding-001
-      - key: GEMINI_EMBEDDING_DIMS
+        value: pelican-v3-render-001
+      - key: APP_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: PUBLIC_HOSTING
+        value: "true"
+      - key: ALLOW_TEST_AUTH
+        value: "false"
+      - key: ALLOW_OFFLINE_EMBEDDINGS
+        value: "false"
+      - key: LLM_PROVIDER
+        value: openrouter
+      - key: EMBEDDING_PROVIDER
+        value: openrouter
+      - key: EXTRACTION_PRIMARY_MODEL
+        value: z-ai/glm-5.3-flash
+      - key: EXTRACTION_FALLBACK_MODEL
+        value: google/gemini-2.5-flash-lite
+      - key: EMBEDDING_MODEL
+        value: openai/text-embedding-3-small
+      - key: EMBEDDING_DIMS
         value: 1536
+      - key: OPENROUTER_SPENDING_CAP
+        value: "2.00"
+      - key: ENABLE_JEV_VALIDATION
+        value: "false"
+      - key: JEV_MODEL
+        value: typesafe/jev-router
       - key: MEM0_TELEMETRY
         value: "false"
       - key: MONGODB_DB_NAME
@@ -26,9 +48,7 @@ services:
         value: memories
       - key: MONGODB_VECTOR_INDEX_NAME
         value: memories_vector_index_scoped
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: GEMINI_PAID_TIER_CONFIRMED
+      - key: OPENROUTER_API_KEY
         sync: false
       - key: MONGODB_URI
         sync: false

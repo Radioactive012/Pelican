@@ -4,7 +4,7 @@
 >
 > This file is the single source of truth for product scope, version roadmap, safety boundaries,
 > and technical architecture. All prior drafts, obsolete version plans (V0-V5), and discarded
-> features (dashboards, MCP, Cursor integrations) are superseded by this plan.
+> features (MCP and Cursor integrations) are superseded by this plan. The user explicitly added a Pelican dashboard and first-run import for the release.
 > Do not declare a version complete until its required gates pass. V3 development is in progress; live browser verification is still pending.
 
 ---
@@ -13,12 +13,12 @@
 
 Context Passport is a **self-improving, privacy-first browser memory** product.
 
-- **One compact extension UI**: Works natively on **ChatGPT (`chatgpt.com`)**, **Claude (`claude.ai`)**, and **Gemini web (`gemini.google.com`)**. Contains a compact side-panel vault and settings. Includes a universal side-panel copy/paste fallback route if a site changes its DOM.
-- **One backend**: FastAPI bound strictly to `127.0.0.1:8000` (`http://localhost:8000`) on this local machine. No Render or public cloud backend hosting in this plan.
+- **One browser extension**: Works on **ChatGPT (`chatgpt.com`)**, **Claude (`claude.ai`)**, and **Gemini web (`gemini.google.com`)**. Includes a Pelican side panel, a packaged dashboard, first-run memory import, and a copy/paste fallback route.
+- **One backend, two run modes**: FastAPI uses `127.0.0.1:8000` locally and the free Render HTTPS service for the public demo. Public binding requires `PUBLIC_HOSTING=true`. Render serves the website, dashboard, onboarding, API, and extension ZIP from one origin. See `DEPLOY.md`.
 - **Model routing (provisional plan & transition)**:
   - *Current baseline code*: Directly wired to Gemini extraction (`gemini-2.5-flash`) and Gemini embeddings (`models/gemini-embedding-001`, 1536 dims), requiring `GEMINI_PAID_TIER_CONFIRMED`.
-  - *Target provider-aware abstraction*: Provisional primary extractor is OpenRouter GLM 5.3 Flash (`openrouter/glm-5.3-flash`); candidate fallback is Gemini 2.5 Flash Lite via OpenRouter (`google/gemini-2.5-flash-lite`); provisional 1536-dimensional embedder is `openai/text-embedding-3-small` via OpenRouter.
-  - *Validation pass*: Jev from TypeSafe AI gets a feature-flagged, selective second-pass path, subject to verified API behavior, quality, and pricing.
+  - *Target provider-aware abstraction*: Provisional primary extractor is OpenRouter GLM 5.3 Flash (`z-ai/glm-5.3-flash`); candidate fallback is Gemini 2.5 Flash Lite via OpenRouter (`google/gemini-2.5-flash-lite`); provisional 1536-dimensional embedder is `openai/text-embedding-3-small` via OpenRouter.
+  - *Validation pass*: `typesafe/jev-router` uses the same OpenRouter key for selective review of ambiguous memory candidates. Its live behavior and variable routing cost remain unverified.
   - *Benchmarking*: Benchmarking (Step 10) will be conducted before finalizing model selection. Real keys are entered only at Step 10; Steps 1–9 use mocks and synthetic data only.
 - **One application database**: **MongoDB Atlas stores both Mem0 vector memories and app-control collections** (`observations`, `preferences`, `dedup_events`, `forgotten_preferences`, `forgotten_memory_sources`). Supabase supplies **sign-in only** (JWT issuance/validation), eliminating dual-database coordination.
 - **One narrow learning behavior**: Automatically learns **how the user likes answers explained**. Promotes an explanation-style preference only after **three distinct user-authored observations across at least two conversations**. User corrections lock the wording and take priority over later automatic guesses.
@@ -28,11 +28,11 @@ Context Passport is a **self-improving, privacy-first browser memory** product.
   - `secret`: recognizable credentials, API keys, passwords, and private tokens are screened and skipped entirely. Never stored or logged.
 
 ### Explicit Out-of-Scope Items
-- No separate dashboard web app. Everything is managed inside the extension side panel.
+- The Pelican dashboard and onboarding are packaged extension pages and served by the same backend origin on local and Render deployments.
 - No MCP servers or MCP client adapters.
 - No Cursor or coding-assistant extensions.
 - No additional native websites beyond ChatGPT, Claude, and Gemini web.
-- No public cloud hosting (Render, etc.) for the backend; local loopback execution only.
+- Public hosting is explicitly included for the demo; never expose a backend without production auth and provider spending limits.
 
 ---
 
@@ -60,11 +60,12 @@ Context Passport is a **self-improving, privacy-first browser memory** product.
 | Step 6 | Recall, Consent & Injection | Use Memory, up-to-3 general, sensitive consent modal, composer replacement, fallback UI | Passed |
 
 | Step 7 | Vault Controls & Lifecycle | Card rendering, locked preference corrections, evidence removal, block/forget lifecycles | Passed |
-| Step 8 | Local Runtime & Reliability | `127.0.0.1:8000` loopback, token expiry, rate limits, restart survival, no public binding | Passed |
+| Step 8 | Local Runtime & Reliability | `127.0.0.1:8000` loopback by default, token expiry, rate limits, restart survival | Passed |
 | Step 9 | UX, Packaging & Written Setup | Extension packaging in `v3/dist`, clear empty/error states, reproducible setup documentation | Passed |
-| Step 10 | Connect Models & Routing | Real OpenRouter & Jev keys in backend env, 30–50 benchmark cases, spending cap, quality validation | Pending |
+| Step 10 | Connect Models & Routing | One OpenRouter key, live 40-case benchmark, Jev route and actual usage validation | PENDING — live key and benchmark |
 | Step 11 | Real Browser Journey | Live ChatGPT, Claude, Gemini web tests in Chrome/Brave; cross-site recall; privacy modals | LIVE PENDING |
 | Step 12 | Final Release & Judge Rehearsal | Fresh `v3/dist`, clean demo account, end-to-end judge demonstration rehearsal | LIVE PENDING |
+| Deployment | Render release | Free Blueprint and paired extension ZIP prepared; live Render account deployment and full authenticated browser journey remain pending | PREPARED |
 
 ---
 
@@ -75,10 +76,10 @@ Context Passport is a **self-improving, privacy-first browser memory** product.
 | Python | `3.11.15` | Backend runtime |
 | Node.js | `>= 20.x` | Extension build & script runner |
 | Mem0 OSS | `2.2.0` | Memory orchestration |
-| Backend Host | `127.0.0.1:8000` | Local loopback runtime (no public exposure) |
-| Extraction Primary (Provisional) | `openrouter/glm-5.3-flash` | Fast, cost-efficient fact extraction (mocked until Step 10) |
+| Backend Host | `127.0.0.1:8000` local; Render HTTPS for demo | Explicit public binding in Render only |
+| Extraction Primary (Provisional) | `z-ai/glm-5.3-flash` | Fast, cost-efficient fact extraction (mocked until Step 10) |
 | Extraction Fallback (Provisional) | `google/gemini-2.5-flash-lite` | Robust fallback extraction via OpenRouter |
-| Validation Pass (Feature-flagged) | Jev (TypeSafe AI) | Optional second-pass quality/privacy verification |
+| Validation Pass (Feature-flagged) | `typesafe/jev-router` via OpenRouter | Optional review of ambiguous candidate memories; live contract pending |
 | Embedding Model (Provisional) | `openai/text-embedding-3-small` (1536d) | High-performance 1536-dim embeddings via OpenRouter |
 | Legacy Reference Extractor | `gemini-2.5-flash` | Direct Gemini extractor (being transitioned) |
 | Legacy Reference Embedder | `models/gemini-embedding-001` (1536d) | Direct Gemini embedder (being transitioned) |
@@ -93,7 +94,6 @@ Context Passport is a **self-improving, privacy-first browser memory** product.
 
 1. **Test-first for each version**: Implement the code and the verification suite to prove all criteria before declaring completion.
 2. **Never commit secrets**: `.env` is git-ignored and contains private API keys and database credentials.
-3. **No scope creep**: Reject dashboards, extra websites, MCP, or complex extra settings. Keep the UI compact in the extension side panel.
+3. **Scope**: Maintain the user-requested dashboard and onboarding alongside the compact side panel. Avoid unrelated MCP or extra platform integrations.
 4. **Live gates require real browsers**: Automated unit and contract tests (Steps 1–9) do not replace live browser verification on ChatGPT, Claude, and Gemini web (Steps 11–12).
 5. **Living documentation & final checklist updates**: After each step, update `AGENTS.md` and `v3.md`. Record newly discovered failure modes in Section 3 and append any newly identified edge cases or end-to-end verification items to Section 4 of `v3.md` ("Living Checklist: Things We Need to Check at Last").
-

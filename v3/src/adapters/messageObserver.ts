@@ -102,4 +102,3 @@ export function observeRenderedUserMessages(
     cancelPending();
   };
 }
-

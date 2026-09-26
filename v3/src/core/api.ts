@@ -5,6 +5,7 @@
  */
 
 import type { MemoryItem, PreferenceItem } from './injection.ts';
+import { DEFAULT_BACKEND_URL } from './storage.ts';
 
 export interface IngestResponse {
   status: 'processed' | 'skipped' | 'duplicate_skipped';
@@ -45,7 +46,7 @@ export class ContextPassportApiClient {
   private backendUrl: string;
   private token: string;
 
-  constructor(backendUrl = 'http://127.0.0.1:8000', token = '') {
+  constructor(backendUrl = DEFAULT_BACKEND_URL, token = '') {
     this.backendUrl = backendUrl.replace(/\/+$/, '');
     this.token = token.trim().replace(/^Bearer\s+/i, '');
   }

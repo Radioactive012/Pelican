@@ -1,7 +1,6 @@
-DM Sans: Copyright 2014 The DM Sans Project Authors (https://github.com/googlefonts/dm-fonts)
-Host Grotesk: Copyright 2023 The Host Grotesk Project Authors (https://github.com/Element-Type/HostGrotesk)
+Instrument Sans: Copyright 2022 The Instrument Sans Project Authors (https://github.com/Instrument/instrument-sans)
 
-Both fonts are licensed under the SIL Open Font License, Version 1.1.
+Licensed under the SIL Open Font License, Version 1.1.
 
 -----------------------------------------------------------
 SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007

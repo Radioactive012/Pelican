@@ -2,7 +2,7 @@
 
 Context Passport V3 is a Manifest V3 browser extension built with TypeScript for **ChatGPT** (`chatgpt.com`), **Claude** (`claude.ai`), and **Gemini Web** (`gemini.google.com`).
 
-The extension communicates strictly with the local FastAPI loopback backend at `http://127.0.0.1:8000` (`http://localhost:8000`).
+The local build uses `http://127.0.0.1:8000`. The hosted ZIP from the Pelican website is paired with the Render HTTPS backend; the URL can also be changed in Settings. See [deployment instructions](../DEPLOY.md).
 
 ---
 
@@ -59,7 +59,7 @@ Context Passport requests minimal, transparent permissions:
 | `storage` | Persists per-site capture toggles and local auth tokens in `chrome.storage.local`. Passwords are never stored. |
 | `sidePanel` | Displays the compact Memory Vault, Learned Preferences, and Settings UI. |
 | `tabs` | Identifies active tab URL to apply per-site capture policies on ChatGPT, Claude, and Gemini Web. |
-| Host permissions | Limited strictly to `chatgpt.com`, `claude.ai`, `gemini.google.com`, `http://localhost:8000/*`, and `http://127.0.0.1:8000/*`. |
+| Host permissions | ChatGPT, Claude, Gemini, local loopback, and the exact hosted backend stamped into a downloaded ZIP. Optional HTTPS permission supports switching to another backend. |
 
 ---
 

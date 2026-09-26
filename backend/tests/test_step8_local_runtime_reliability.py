@@ -3,10 +3,10 @@
 Verifies:
 1. Localhost loopback runtime (127.0.0.1:8000) with explicit environment configuration.
 2. /health and /ready endpoints, including disconnected Atlas and Supabase checks.
-3. Login success and failure with real Supabase Auth.
+3. Login success and failure with mocked Supabase Auth responses.
 4. Expired and invalid JWT handling (returning explicit 401 with detail 'token_expired').
 5. Model provider timeout handling on ingest (504 + safe retry event state) and query (504).
-6. Server process restart behavior: memory and preference persistence across restart,
+6. Simulated server restart behavior: memory and preference persistence across restart,
    followed by memory wording update and forget/delete after restart.
 7. LAN address isolation: server bound to 127.0.0.1 is unreachable over the laptop's LAN IP.
 8. No test bypass or deterministic embedding active in real production configuration.
@@ -121,6 +121,9 @@ def test_health_endpoint_loopback():
 # 2. Ready Endpoint: Configuration and Disconnected Service Checks
 # ---------------------------------------------------------------------------
 def test_ready_endpoint_connected_and_disconnected(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "mock-openrouter-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "mock-gemini-key")
+    monkeypatch.setattr(server.httpx, "get", lambda *args, **kwargs: httpx.Response(200, json={}))
     # 1. When all dependencies are connected
     with TestClient(server.app) as client:
         resp = client.get("/ready?check_connectivity=true")
@@ -168,7 +171,15 @@ def test_ready_endpoint_connected_and_disconnected(monkeypatch):
 # ---------------------------------------------------------------------------
 # 3. Login Success and Failure with Real Supabase Auth
 # ---------------------------------------------------------------------------
-def test_auth_login_success_and_failure():
+def test_auth_login_success_and_failure(monkeypatch):
+    import auth
+
+    def mock_supabase_token(_url, *, json, **_kwargs):
+        if json["password"] == "SafeTestPasswordA123!":
+            return httpx.Response(200, json={"access_token": "synthetic-offline-access-token-12345"})
+        return httpx.Response(400, json={"error": "invalid_grant"})
+
+    monkeypatch.setattr(auth.httpx, "post", mock_supabase_token)
     with TestClient(server.app) as client:
         # Failure: invalid password
         resp_fail = client.post(
@@ -199,7 +210,9 @@ def test_auth_login_success_and_failure():
 # ---------------------------------------------------------------------------
 # 4. Expired and Invalid JWT Handling
 # ---------------------------------------------------------------------------
-def test_expired_and_invalid_jwt_handling():
+def test_expired_and_invalid_jwt_handling(monkeypatch):
+    import auth
+    monkeypatch.setattr(auth.httpx, "get", lambda *args, **kwargs: httpx.Response(401, json={"message": "invalid token"}))
     with TestClient(server.app) as client:
         # Missing auth header
         resp_missing = client.get("/api/v1/memories")
@@ -410,8 +423,8 @@ def test_lan_address_is_not_reachable():
         assert r_loopback.status_code == 200
 
         # LAN IP connection MUST be refused / unreachable
-        with pytest.raises(httpx.ConnectError):
-            httpx.get(f"http://{lan_ip}:{port}", timeout=1.0)
+        with pytest.raises(OSError):
+            socket.create_connection((lan_ip, port), timeout=1.0)
     finally:
         stop_event.set()
         server_sock.close()

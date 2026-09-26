@@ -14,21 +14,26 @@ from __future__ import annotations
 
 import collections
 import hashlib
+import io
+import json
 import logging
 import os
 import time
 from contextlib import asynccontextmanager
 from importlib.metadata import version
 import threading
+import zipfile
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Literal
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, StreamingResponse, RedirectResponse
 
-from auth import AuthenticatedUser, get_current_user, acquire_synthetic_user_token
+from auth import AuthenticatedUser, get_current_user
 from memory_manager import MemoryManager
 from preference_engine import PreferenceEngine, is_extension_injected_context
 from providers import (
@@ -66,12 +71,13 @@ def reset_rate_limits() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: ensure strictly loopback host configuration
+    # Public binding requires an explicit deployment setting.
     host = os.getenv("HOST", "127.0.0.1").strip()
-    if host in ("0.0.0.0", "", "::", "0:0:0:0:0:0:0:0"):
+    public_hosting = os.getenv("PUBLIC_HOSTING", "false").lower() == "true"
+    if host in ("0.0.0.0", "", "::", "0:0:0:0:0:0:0:0") and not public_hosting:
         logger.warning("Rejecting public host binding %s; enforcing loopback 127.0.0.1", host)
         os.environ["HOST"] = "127.0.0.1"
-    logger.info("Context Passport API initialized on loopback %s", os.getenv("HOST", "127.0.0.1"))
+    logger.info("Context Passport API initialized on %s", os.getenv("HOST", "127.0.0.1"))
     yield
     # Shutdown: clean up singleton connections and reset in-memory state
     global memory_manager, preference_engine
@@ -334,7 +340,57 @@ class AuthTokenRequest(BaseModel):
     password: str
 
 
+class MemoryImportRequest(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=80)
+    age: Optional[int] = Field(default=None, ge=13, le=120)
+    role: Optional[str] = Field(default=None, max_length=100)
+    tools: List[Literal["chatgpt", "claude", "gemini"]] = Field(default_factory=list, max_length=3)
+    memories: List[str] = Field(default_factory=list, max_length=30)
+
+
 # Endpoints
+@app.get("/download/pelican-v3.zip")
+async def download_extension() -> StreamingResponse:
+    archive = Path(__file__).resolve().parent.parent / "release" / "pelican-v3.zip"
+    if not archive.is_file():
+        raise HTTPException(status_code=503, detail="Extension download is not packaged on this deployment.")
+    base_url = os.getenv("PUBLIC_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL")
+    if not base_url:
+        if os.getenv("PUBLIC_HOSTING", "false").lower() == "true":
+            raise HTTPException(status_code=503, detail="Set PUBLIC_BASE_URL to the HTTPS site URL before offering the extension.")
+        base_url = "http://127.0.0.1:8000"
+    base_url = base_url.rstrip("/")
+    if not (base_url.startswith("https://") or base_url == "http://127.0.0.1:8000"):
+        raise HTTPException(status_code=503, detail="PUBLIC_BASE_URL must be an HTTPS origin.")
+    from urllib.parse import urlparse
+    parsed = urlparse(base_url)
+    if parsed.path or parsed.query or parsed.fragment or not parsed.netloc:
+        raise HTTPException(status_code=503, detail="PUBLIC_BASE_URL must be an origin without a path.")
+    output = io.BytesIO()
+    with zipfile.ZipFile(archive) as original, zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as packaged:
+        for entry in original.infolist():
+            if entry.is_dir():
+                continue
+            data = original.read(entry.filename)
+            if entry.filename == "manifest.json":
+                manifest = json.loads(data)
+                manifest["homepage_url"] = base_url
+                origin_permission = base_url + "/*"
+                permissions = manifest.setdefault("host_permissions", [])
+                if origin_permission not in permissions:
+                    permissions.append(origin_permission)
+                data = (json.dumps(manifest, indent=2) + "\n").encode()
+            elif entry.filename == "pelican-config.js":
+                data = ("window.PELICAN_BACKEND_URL = " + json.dumps(base_url) + ";\n").encode()
+            packaged.writestr(entry.filename, data)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="pelican-v3.zip"', "Cache-Control": "no-store"},
+    )
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {
@@ -369,8 +425,8 @@ async def ready(request: Request) -> JSONResponse:
             missing.append("GEMINI_PAID_TIER_CONFIRMED")
 
     if os.getenv("ENABLE_JEV_VALIDATION", "false").lower() == "true":
-        if not os.getenv("JEV_API_KEY"):
-            missing.append("JEV_API_KEY")
+        if "OPENROUTER_API_KEY" not in required and not os.getenv("OPENROUTER_API_KEY"):
+            missing.append("OPENROUTER_API_KEY")
 
     if missing:
         return JSONResponse(
@@ -445,14 +501,277 @@ async def ready(request: Request) -> JSONResponse:
 
 @app.post("/api/v1/auth/token")
 async def login_for_token(req: AuthTokenRequest) -> dict[str, Any]:
-    """Helper to acquire a Supabase access token for testing or extension sign-in."""
-    token = acquire_synthetic_user_token(req.email, req.password)
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Failed to authenticate credentials with Supabase",
+    """Sign in through Supabase Auth and return an access token."""
+    supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not supabase_url or not anon_key:
+        raise HTTPException(status_code=503, detail="Authentication is not configured")
+
+    def _do_login() -> httpx.Response:
+        return httpx.post(
+            f"{supabase_url}/auth/v1/token?grant_type=password",
+            headers={"apikey": anon_key, "Content-Type": "application/json"},
+            json={"email": req.email, "password": req.password},
+            timeout=10,
         )
+
+    try:
+        response = _do_login()
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=503, detail="Authentication service unreachable") from exc
+
+    if response.status_code != 200:
+        code = ""
+        if "json" in response.headers.get("content-type", ""):
+            code = response.json().get("code", "")
+
+        # Auto-confirm unconfirmed users using the service role key, then retry
+        if code == "email_not_confirmed" and service_key:
+            try:
+                # Look up the user by email to get their ID
+                lookup = httpx.get(
+                    f"{supabase_url}/auth/v1/admin/users",
+                    headers={"apikey": service_key, "Authorization": f"Bearer {service_key}"},
+                    params={"email": req.email},
+                    timeout=10,
+                )
+                users = lookup.json().get("users", []) if lookup.status_code == 200 else []
+                user_id = next((u["id"] for u in users if u.get("email", "").lower() == req.email.lower()), None)
+                if user_id:
+                    httpx.put(
+                        f"{supabase_url}/auth/v1/admin/users/{user_id}",
+                        headers={"apikey": service_key, "Authorization": f"Bearer {service_key}",
+                                 "Content-Type": "application/json"},
+                        json={"email_confirm": True},
+                        timeout=10,
+                    )
+                    # Retry login after confirmation
+                    try:
+                        response = _do_login()
+                    except httpx.RequestError as exc:
+                        raise HTTPException(status_code=503, detail="Authentication service unreachable") from exc
+            except Exception as exc:
+                logger.warning("Auto-confirm failed: %s", exc)
+
+    if response.status_code != 200:
+        code = response.json().get("code", "") if "json" in response.headers.get("content-type", "") else ""
+        if code == "email_not_confirmed":
+            raise HTTPException(status_code=403, detail="Confirm your email before signing in. Check your inbox or spam folder.")
+        if code == "invalid_credentials":
+            raise HTTPException(status_code=401, detail="Email or password is incorrect.")
+        raise HTTPException(status_code=401, detail="Sign-in failed. Check your credentials and try again.")
+
+    token = response.json().get("access_token")
+    if not token:
+        raise HTTPException(status_code=502, detail="Authentication did not return a session")
     return {"access_token": token, "token_type": "bearer"}
+
+
+@app.post("/api/v1/auth/signup")
+async def signup(req: AuthTokenRequest) -> dict[str, Any]:
+    """Create a Supabase Auth account and auto-confirm it so login works immediately."""
+    supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not supabase_url or not anon_key:
+        raise HTTPException(status_code=503, detail="Authentication is not configured")
+
+    token = None
+    created = False
+
+    # Prefer admin API user creation with email_confirm: True if service_key is available
+    # to avoid Supabase free tier email rate limits (over_email_send_rate_limit) in production.
+    if service_key and "example.test" not in supabase_url:
+        try:
+            admin_resp = httpx.post(
+                f"{supabase_url}/auth/v1/admin/users",
+                headers={
+                    "apikey": service_key,
+                    "Authorization": f"Bearer {service_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"email": req.email, "password": req.password, "email_confirm": True},
+                timeout=10,
+            )
+            if admin_resp.status_code in (200, 201):
+                created = True
+                try:
+                    login_resp = httpx.post(
+                        f"{supabase_url}/auth/v1/token?grant_type=password",
+                        headers={"apikey": anon_key, "Content-Type": "application/json"},
+                        json={"email": req.email, "password": req.password},
+                        timeout=10,
+                    )
+                    if login_resp.status_code == 200:
+                        token = login_resp.json().get("access_token")
+                except Exception as exc:
+                    logger.warning("Post-signup login failed: %s", exc)
+            else:
+                admin_data = admin_resp.json() if "json" in admin_resp.headers.get("content-type", "") else {}
+                code = admin_data.get("code") or admin_data.get("error_code", "")
+                msg = str(admin_data.get("msg") or admin_data.get("message", "")).lower()
+                if code in {"user_already_exists", "email_exists"} or "already" in msg:
+                    # User already exists - attempt automatic login with their password
+                    try:
+                        login_resp = httpx.post(
+                            f"{supabase_url}/auth/v1/token?grant_type=password",
+                            headers={"apikey": anon_key, "Content-Type": "application/json"},
+                            json={"email": req.email, "password": req.password},
+                            timeout=10,
+                        )
+                        if login_resp.status_code == 200:
+                            token = login_resp.json().get("access_token")
+                            return {"status": "ready", "access_token": token}
+                    except Exception:
+                        pass
+                    raise HTTPException(status_code=400, detail="Account already exists. Sign in instead.")
+                elif code == "weak_password" or "password" in msg:
+                    raise HTTPException(status_code=400, detail="Choose a stronger password (8+ characters with letters and numbers).")
+                elif code == "over_email_send_rate_limit":
+                    raise HTTPException(status_code=400, detail="Too many confirmation emails sent. Please wait a moment and try again.")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("Admin user creation failed, falling back to signup endpoint: %s", exc)
+
+    if not created and not token:
+        try:
+            response = httpx.post(
+                f"{supabase_url}/auth/v1/signup",
+                headers={"apikey": anon_key, "Content-Type": "application/json"},
+                json={"email": req.email, "password": req.password},
+                timeout=10,
+            )
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=503, detail="Authentication service unreachable") from exc
+
+        if response.status_code not in (200, 201):
+            code = response.json().get("code", "") if "json" in response.headers.get("content-type", "") else ""
+            if code in {"user_already_exists", "email_exists"}:
+                detail = "Account already exists. Sign in instead."
+            elif code == "over_email_send_rate_limit":
+                detail = "Too many confirmation emails sent. Please wait a moment and try again."
+            elif code == "weak_password":
+                detail = "Choose a stronger password (8+ characters with letters and numbers)."
+            else:
+                detail = "Sign-up failed. Check the email and password or try signing in."
+            raise HTTPException(status_code=400, detail=detail)
+
+        data = response.json()
+        session = data.get("session") or data
+        token = session.get("access_token") if isinstance(session, dict) else None
+        user_id = (data.get("user") or data).get("id") if isinstance(data, dict) else None
+
+        # Auto-confirm the new user via the admin API so no email step is needed
+        if service_key and user_id and not token:
+            try:
+                confirm_resp = httpx.put(
+                    f"{supabase_url}/auth/v1/admin/users/{user_id}",
+                    headers={
+                        "apikey": service_key,
+                        "Authorization": f"Bearer {service_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"email_confirm": True},
+                    timeout=10,
+                )
+                if confirm_resp.status_code == 200:
+                    logger.info("Auto-confirmed user %s via admin API", user_id)
+                    login_resp = httpx.post(
+                        f"{supabase_url}/auth/v1/token?grant_type=password",
+                        headers={"apikey": anon_key, "Content-Type": "application/json"},
+                        json={"email": req.email, "password": req.password},
+                        timeout=10,
+                    )
+                    if login_resp.status_code == 200:
+                        token = login_resp.json().get("access_token")
+            except Exception as exc:
+                logger.warning("Auto-confirm step failed for %s: %s", user_id, exc)
+
+    return {"status": "ready" if token else "confirmation_required", "access_token": token}
+
+
+class OAuthExchangeRequest(BaseModel):
+    code: str
+    redirect_to: Optional[str] = None
+
+
+@app.get("/api/v1/auth/google")
+async def get_google_auth_url(request: Request, redirect_to: Optional[str] = None):
+    """Return Supabase Google OAuth authorization URL or redirect to it."""
+    supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    if not supabase_url or not anon_key:
+        raise HTTPException(status_code=503, detail="Authentication is not configured")
+    from urllib.parse import urlencode
+    target_redirect = redirect_to or "http://127.0.0.1:8000/dashboard.html"
+    query = urlencode({"provider": "google", "redirect_to": target_redirect})
+    auth_url = f"{supabase_url}/auth/v1/authorize?{query}"
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept and "application/json" not in accept:
+        return RedirectResponse(auth_url, status_code=307)
+    return {"url": auth_url}
+
+
+@app.post("/api/v1/auth/oauth-callback")
+async def oauth_callback(req: OAuthExchangeRequest) -> dict[str, Any]:
+    """Exchange OAuth PKCE code for access token."""
+    supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    if not supabase_url or not anon_key:
+        raise HTTPException(status_code=503, detail="Authentication is not configured")
+    try:
+        resp = httpx.post(
+            f"{supabase_url}/auth/v1/token?grant_type=pkce",
+            headers={"apikey": anon_key, "Content-Type": "application/json"},
+            json={"auth_code": req.code},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            return {"access_token": data.get("access_token"), "token_type": "bearer", "user": data.get("user")}
+    except Exception as exc:
+        logger.warning("OAuth exchange failed: %s", exc)
+    raise HTTPException(status_code=400, detail="Could not exchange authorization code for session")
+
+
+@app.post("/api/v1/memories/import")
+async def import_memories(
+    req: MemoryImportRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+    mem_mgr: MemoryManager = Depends(get_mem_manager),
+) -> dict[str, Any]:
+    """Persist user-confirmed facts so Vault and recall can use them immediately."""
+    require_paid_tier_confirmation()
+    proposed: list[tuple[str, bool]] = []
+    if req.name and req.name.strip():
+        proposed.append((f"User's name is {req.name.strip()}.", True))
+    if req.age is not None:
+        proposed.append((f"User is {req.age} years old.", True))
+    if req.role and req.role.strip():
+        proposed.append((f"User's profession or role is {req.role.strip()}.", False))
+    if req.tools:
+        tools = ", ".join(dict.fromkeys(req.tools))
+        proposed.append((f"User uses {tools} as AI assistants.", False))
+    proposed.extend((memory, False) for memory in req.memories)
+    if not proposed:
+        return {"saved": [], "saved_count": 0, "duplicate_count": 0, "skipped_count": 0}
+
+    saved: list[dict[str, Any]] = []
+    duplicate_count = 0
+    skipped_count = 0
+    for text, sensitive in proposed:
+        if len(text) > 500:
+            raise HTTPException(status_code=400, detail="Each imported memory must be at most 500 characters")
+        result = mem_mgr.add_explicit_fact(text, user.user_id, sensitive=sensitive)
+        if result["status"] == "saved":
+            saved.append(result)
+        elif result["status"] == "duplicate":
+            duplicate_count += 1
+        else:
+            skipped_count += 1
+    return {"saved": saved, "saved_count": len(saved), "duplicate_count": duplicate_count, "skipped_count": skipped_count}
 
 
 @app.post("/api/v1/messages/ingest")
@@ -710,11 +1029,16 @@ async def delete_memory(
         raise HTTPException(status_code=404, detail="Memory not found for user")
 
 
+# The dashboard and onboarding share the API origin. Keep this
+# mount after API routes so static paths cannot shadow authenticated endpoints.
+app.mount("/", StaticFiles(directory=Path(__file__).resolve().parent.parent / "website", html=True), name="local_frontend")
+
+
 if __name__ == "__main__":
     import uvicorn
 
     host = os.getenv("HOST", "127.0.0.1").strip()
-    if host in ("0.0.0.0", "", "::", "0:0:0:0:0:0:0:0"):
+    if host in ("0.0.0.0", "", "::", "0:0:0:0:0:0:0:0") and os.getenv("PUBLIC_HOSTING", "false").lower() != "true":
         logger.warning("Public interface binding rejected for security; binding to 127.0.0.1")
         host = "127.0.0.1"
     port = int(os.getenv("PORT", "8000"))

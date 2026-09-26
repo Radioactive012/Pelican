@@ -27,7 +27,7 @@ describe('Step 9 — UX, Packaging & Written Setup Suite', () => {
     const manifest = JSON.parse(manifestRaw);
 
     assert.equal(manifest.manifest_version, 3, 'Must be Manifest V3');
-    assert.equal(manifest.name, 'Context Passport');
+    assert.equal(manifest.name, 'Pelican — Your Memory for AI');
     assert.equal(manifest.version, '3.0.0');
     assert.match(manifest.description, /ChatGPT, Claude, and Gemini/i);
 
@@ -60,7 +60,7 @@ describe('Step 9 — UX, Packaging & Written Setup Suite', () => {
     const allowedExtensions = ['.js', '.map', '.html', '.css', '.json', '.png'];
 
     for (const file of files) {
-      if (file === 'icons') continue; // directory
+      if (file === 'icons' || file === 'assets') continue; // asset directories
       const ext = path.extname(file);
       assert(
         allowedExtensions.includes(ext),
@@ -169,7 +169,7 @@ describe('Step 9 — UX, Packaging & Written Setup Suite', () => {
     assert(errorState, 'Vault must render error state upon backend failure');
     assert.equal(errorState.getAttribute('role'), 'alert', 'Error state must have role="alert"');
     assert.match(errorState.textContent!, /Backend server offline/i);
-    assert.match(errorState.textContent!, /127\.0\.0\.1:8000/);
+    assert.match(errorState.textContent!, /configured backend/i);
     assert(errorState.querySelector('#vault-error-action-btn'), 'Error state must include an action button');
 
     dom.window.close();
@@ -294,7 +294,7 @@ describe('Step 9 — UX, Packaging & Written Setup Suite', () => {
     assert(permCard, 'Permissions guide card must be present in Settings tab');
     assert.match(permCard.textContent!, /Local Storage/i);
     assert.match(permCard.textContent!, /chatgpt\.com/i);
-    assert.match(permCard.textContent!, /127\.0\.0\.1:8000/i);
+    assert.match(permCard.textContent!, /configured HTTPS service/i);
     assert.match(permCard.textContent!, /Secret Screener/i);
 
     dom.window.close();
@@ -341,7 +341,7 @@ describe('Step 9 — UX, Packaging & Written Setup Suite', () => {
     assert.match(envExample, /MONGODB_URI=/);
     assert.match(envExample, /SUPABASE_URL=/);
     assert.match(envExample, /HOST=127\.0\.0\.1/);
-    assert(!envExample.includes('0.0.0.0'), '.env.example must not contain 0.0.0.0');
+    assert.match(envExample, /PUBLIC_HOSTING=false/, 'local development must default to loopback-only hosting');
     assert(!envExample.includes('RENDER_EXTERNAL_URL'), '.env.example must not contain RENDER_EXTERNAL_URL');
   });
 });

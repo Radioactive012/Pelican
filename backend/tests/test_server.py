@@ -44,7 +44,7 @@ def test_ready_endpoint_reports_configuration_without_secret_values(monkeypatch,
     assert "secret-" not in response.text
 
 
-def test_ready_endpoint_checks_jev_when_enabled(monkeypatch):
+def test_ready_endpoint_uses_same_openrouter_key_for_jev(monkeypatch):
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("LLM_PROVIDER", "openrouter")
     monkeypatch.setenv("ENABLE_JEV_VALIDATION", "true")
@@ -55,12 +55,6 @@ def test_ready_endpoint_checks_jev_when_enabled(monkeypatch):
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "secret-service")
     monkeypatch.delenv("JEV_API_KEY", raising=False)
 
-    with TestClient(app) as client:
-        resp = client.get("/ready")
-    assert resp.status_code == 503
-    assert "JEV_API_KEY" in resp.json()["missing"]
-
-    monkeypatch.setenv("JEV_API_KEY", "secret-jev-key")
     with TestClient(app) as client:
         resp = client.get("/ready")
     assert resp.status_code == 200

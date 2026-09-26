@@ -14,18 +14,27 @@ export interface StorageSchema {
   user_email: string;
 }
 
+declare const __PELICAN_BACKEND_URL__: string;
+export const DEFAULT_BACKEND_URL = typeof __PELICAN_BACKEND_URL__ !== 'undefined'
+  ? __PELICAN_BACKEND_URL__ : 'http://127.0.0.1:8000';
+
 const DEFAULT_SETTINGS: StorageSchema = {
   // Capture is OFF by default across all sites
   capture_chatgpt: false,
   capture_claude: false,
   capture_gemini: false,
-  backend_url: 'http://localhost:8000',
+  backend_url: DEFAULT_BACKEND_URL,
   auth_token: '',
   user_email: '',
 };
 
 // In-memory cache / fallback for non-extension test environments
 const memoryStore: Record<string, any> = { ...DEFAULT_SETTINGS };
+
+function packagedBackendUrl(): string {
+  const url = typeof chrome !== 'undefined' && chrome.runtime?.getManifest?.().homepage_url;
+  return typeof url === 'string' && /^https:\/\//.test(url) ? url.replace(/\/+$/, '') : DEFAULT_BACKEND_URL;
+}
 
 function hasChromeStorage(): boolean {
   return typeof chrome !== 'undefined' && !!chrome.storage && !!chrome.storage.local;
@@ -38,7 +47,7 @@ export async function getSetting<K extends keyof StorageSchema>(key: K): Promise
         if (result && result[key] !== undefined) {
           resolve(result[key]);
         } else {
-          resolve(DEFAULT_SETTINGS[key]);
+          resolve((key === 'backend_url' ? packagedBackendUrl() : DEFAULT_SETTINGS[key]) as StorageSchema[K]);
         }
       });
     });
@@ -61,6 +70,7 @@ export async function getAllSettings(): Promise<StorageSchema> {
       chrome.storage.local.get(null, (result) => {
         resolve({
           ...DEFAULT_SETTINGS,
+          backend_url: packagedBackendUrl(),
           ...result,
         });
       });

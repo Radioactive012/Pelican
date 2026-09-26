@@ -963,4 +963,3 @@ Compare Go channels with Rust channels.`;
     dom.window.close();
   });
 });
-
