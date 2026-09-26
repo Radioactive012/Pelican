@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://context-passport-api.onrender.com/sitemap.xml
