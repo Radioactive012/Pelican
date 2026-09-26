@@ -11,6 +11,7 @@ export interface StorageSchema {
   capture_gemini: boolean;
   backend_url: string;
   auth_token: string;
+  refresh_token?: string;
   user_email: string;
 }
 
@@ -25,6 +26,7 @@ const DEFAULT_SETTINGS: StorageSchema = {
   capture_gemini: false,
   backend_url: DEFAULT_BACKEND_URL,
   auth_token: '',
+  refresh_token: '',
   user_email: '',
 };
 

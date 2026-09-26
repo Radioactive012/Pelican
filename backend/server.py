@@ -470,7 +470,7 @@ async def ready(request: Request) -> JSONResponse:
             s_resp = httpx.get(
                 f"{supabase_url}/auth/v1/settings",
                 headers={"apikey": anon_key},
-                timeout=2.0,
+                timeout=8.0,
             )
             if not (s_resp.is_success or s_resp.status_code in (200, 401, 403)):
                 disconnected.append("supabase")
@@ -562,10 +562,47 @@ async def login_for_token(req: AuthTokenRequest) -> dict[str, Any]:
             raise HTTPException(status_code=401, detail="Email or password is incorrect.")
         raise HTTPException(status_code=401, detail="Sign-in failed. Check your credentials and try again.")
 
-    token = response.json().get("access_token")
+    res_data = response.json()
+    token = res_data.get("access_token")
     if not token:
         raise HTTPException(status_code=502, detail="Authentication did not return a session")
-    return {"access_token": token, "token_type": "bearer"}
+    return {
+        "access_token": token,
+        "refresh_token": res_data.get("refresh_token"),
+        "token_type": "bearer",
+        "expires_in": res_data.get("expires_in", 3600),
+    }
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+@app.post("/api/v1/auth/refresh")
+async def refresh_access_token(req: RefreshTokenRequest) -> dict[str, Any]:
+    """Exchange a Supabase refresh token for a fresh access token."""
+    supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    if not supabase_url or not anon_key:
+        raise HTTPException(status_code=503, detail="Authentication is not configured")
+    try:
+        resp = httpx.post(
+            f"{supabase_url}/auth/v1/token?grant_type=refresh_token",
+            headers={"apikey": anon_key, "Content-Type": "application/json"},
+            json={"refresh_token": req.refresh_token},
+            timeout=10,
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=503, detail="Authentication service unreachable") from exc
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Refresh token expired or invalid")
+    data = resp.json()
+    return {
+        "access_token": data.get("access_token"),
+        "refresh_token": data.get("refresh_token"),
+        "token_type": "bearer",
+        "expires_in": data.get("expires_in", 3600),
+    }
 
 
 @app.post("/api/v1/auth/signup")
