@@ -102,6 +102,33 @@ export class ContextPassportApiClient {
     }
     const data = await res.json();
     this.token = data.access_token;
+    if (data.refresh_token && typeof chrome !== 'undefined' && chrome.storage?.local) {
+      try {
+        chrome.storage.local.set({ refresh_token: data.refresh_token });
+      } catch {}
+    }
+    return data.access_token;
+  }
+
+  async refreshToken(refreshToken: string): Promise<string> {
+    const res = await fetch(`${this.backendUrl}/api/v1/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!res.ok) {
+      throw new Error('Failed to refresh token');
+    }
+    const data = await res.json();
+    this.token = data.access_token;
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      try {
+        chrome.storage.local.set({
+          auth_token: data.access_token,
+          ...(data.refresh_token ? { refresh_token: data.refresh_token } : {})
+        });
+      } catch {}
+    }
     return data.access_token;
   }
 
