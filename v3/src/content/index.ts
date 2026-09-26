@@ -39,6 +39,17 @@ async function init() {
         }
         if (changes.auth_token) {
           apiClient.setToken(changes.auth_token.newValue);
+          if (changes.auth_token.newValue) {
+            const button = document.querySelector<HTMLButtonElement>('.context-passport-btn');
+            if (button) {
+              delete button.dataset.authRequired;
+              button.removeAttribute('aria-label');
+              button.removeAttribute('title');
+              button.classList.remove('cp-btn-error');
+              const label = button.querySelector('span');
+              if (label) label.textContent = 'Use Memory';
+            }
+          }
         }
       }
     });
@@ -74,6 +85,10 @@ function mountUseMemoryButton(adapter: SiteAdapter, apiClient: ContextPassportAp
     btn.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (btn.dataset.authRequired === 'true') {
+        chrome.runtime.sendMessage({ type: 'open-pelican-sign-in' });
+        return;
+      }
       await handleUseMemory(adapter, apiClient, btn);
     });
 
@@ -93,11 +108,16 @@ function mountUseMemoryButton(adapter: SiteAdapter, apiClient: ContextPassportAp
 }
 
 async function handleUseMemory(adapter: SiteAdapter, apiClient: ContextPassportApiClient, btn: HTMLButtonElement) {
-  await handleUseMemoryAction({
+  const result = await handleUseMemoryAction({
     adapter,
     apiClient,
     button: btn,
   });
+  if (result.reason === 'auth_required') {
+    btn.dataset.authRequired = 'true';
+    btn.title = 'Open Pelican to sign in';
+    btn.setAttribute('aria-label', 'Open Pelican to sign in');
+  }
 }
 
 

@@ -356,12 +356,12 @@ export async function handleUseMemoryAction(options: UseMemoryOptions): Promise<
       options.onError(err);
     } else {
       const userMsg = isAuthErr
-        ? 'Your session expired. Please open the Context Passport side panel and sign in again.'
+        ? 'Your session expired. Click Sign in again to open Pelican; your draft is safe.'
         : `Failed to retrieve memories. ${rawMsg}`;
       showErrorToast(`Context Passport: ${userMsg}`);
     }
     setTimeout(() => {
-      if (btnLabel && (btnLabel.textContent === 'Backend error' || btnLabel.textContent === 'Sign in again')) {
+      if (btnLabel && btnLabel.textContent === 'Backend error') {
         btnLabel.textContent = 'Use Memory';
         button.classList.remove('cp-btn-error');
       }

@@ -18,3 +18,16 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalle
     }
   });
 }
+
+// A signed-out in-page action should take the user straight to recovery.
+if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+  chrome.runtime.onMessage.addListener((message, sender) => {
+    if (message?.type !== 'open-pelican-sign-in') return;
+    const openDashboard = () => chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
+    if (sender.tab?.id != null && chrome.sidePanel?.open) {
+      chrome.sidePanel.open({ tabId: sender.tab.id }).catch(openDashboard);
+    } else {
+      openDashboard();
+    }
+  });
+}
