@@ -26,7 +26,7 @@ SECRET_PATTERNS = [
 # Per spec: Allergies and uncertain facts MUST require approval, never automatic.
 SENSITIVE_KEYWORDS = [
     # Allergies and acute health sensitivities
-    "allergy", "allergies", "allergic", "peanut", "peanuts", "epipen", "anaphylaxis",
+    "allergy", "allergies", "allergic", "epipen", "anaphylaxis",
     "gluten allergy", "dairy allergy", "nut allergy", "shellfish allergy",
     # Uncertain or unconfirmed facts
     "uncertain", "not sure", "unconfirmed", "tentative", "provisional", "speculative",

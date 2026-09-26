@@ -51,6 +51,14 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+#cp-signed-in[hidden], #cp-sign-in-form[hidden] { display: none !important; }
+.cp-account-card { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--bg-card); margin-bottom: 12px; }
+.cp-account-card span { color: var(--text-muted); }
+.cp-account-card strong { overflow-wrap: anywhere; font-size: 14px; }
+.cp-account-card button, #sign-in-btn { min-height: 44px; }
+.cp-advanced-auth { margin-top: 14px; }
+.cp-advanced-auth summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--text-muted); }
+
 .cp-app {
   display: flex;
   flex-direction: column;

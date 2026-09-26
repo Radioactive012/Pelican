@@ -36,9 +36,15 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#039;');
 }
 
-/**
- * Renders the Privacy Firewall approval modal for sensitive memories
- */
+let settleSensitiveCard: ((allowed: boolean) => void) | null = null;
+
+function privatePreview(text: string): string {
+  return escapeHtml(text.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[email]')
+    .replace(/\b\+?\d[\d .()\-]{8,}\d\b/g, '[number]')
+    .slice(0, 90));
+}
+
+/** A compact, non-modal decision card; no sensitive item is used by default. */
 export function promptSensitiveApproval(sensitiveMemories: MemoryItem[]): Promise<boolean> {
   return new Promise((resolve) => {
     if (typeof document === 'undefined' || !document.body) {
@@ -46,51 +52,53 @@ export function promptSensitiveApproval(sensitiveMemories: MemoryItem[]): Promis
       return;
     }
 
-    const backdrop = document.createElement('div');
-    backdrop.className = 'cp-modal-backdrop';
+    settleSensitiveCard?.(false);
+    const card = document.createElement('section');
+    card.id = 'cp-sensitive-consent';
+    card.className = 'cp-sensitive-consent';
+    card.setAttribute('role', 'group');
+    card.setAttribute('aria-label', 'Private memory available');
 
     const itemsHtml = sensitiveMemories
       .map(
         (m) => `
         <div class="cp-sensitive-item">
           <span class="cp-sensitive-badge">Sensitive</span>
-          <span>${escapeHtml(m.text)}</span>
+          <span>${privatePreview(m.text)}</span>
         </div>`
       )
       .join('');
 
-    backdrop.innerHTML = `
-      <div class="cp-modal-card">
+    card.innerHTML = `
+      <div class="cp-consent-card">
         <div class="cp-modal-header">
-          <div class="cp-modal-icon">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
-          </div>
-          <div class="cp-modal-title">Privacy Firewall: Sensitive Context</div>
+          <div class="cp-modal-title">Private memory available</div>
+          <button type="button" id="cp-close-btn" aria-label="Use general only and close">×</button>
         </div>
         <div class="cp-modal-desc">
-          Relevant sensitive memories were found for this prompt. Do you want to allow them once for this request?
+          ${sensitiveMemories.length} private ${sensitiveMemories.length === 1 ? 'memory' : 'memories'} found. General context is ready.
         </div>
         <div class="cp-sensitive-preview">
           ${itemsHtml}
         </div>
         <div class="cp-modal-actions">
-          <button type="button" class="cp-btn-secondary" id="cp-deny-btn">Don't use</button>
+          <button type="button" class="cp-btn-secondary" id="cp-deny-btn">Use general only</button>
           <button type="button" class="cp-btn-primary" id="cp-allow-btn">Allow once</button>
         </div>
       </div>
     `;
 
-    document.body.appendChild(backdrop);
+    document.body.appendChild(card);
 
     const cleanup = (allowed: boolean) => {
-      backdrop.remove();
+      if (settleSensitiveCard === cleanup) settleSensitiveCard = null;
+      card.remove();
       resolve(allowed);
     };
-
-    backdrop.querySelector('#cp-allow-btn')?.addEventListener('click', () => cleanup(true));
-    backdrop.querySelector('#cp-deny-btn')?.addEventListener('click', () => cleanup(false));
+    settleSensitiveCard = cleanup;
+    card.querySelector('#cp-allow-btn')?.addEventListener('click', () => cleanup(true));
+    card.querySelector('#cp-deny-btn')?.addEventListener('click', () => cleanup(false));
+    card.querySelector('#cp-close-btn')?.addEventListener('click', () => cleanup(false));
   });
 }
 
@@ -339,7 +347,7 @@ export async function handleUseMemoryAction(options: UseMemoryOptions): Promise<
     };
   } catch (err: any) {
     const rawMsg = err?.message || 'Backend error';
-    const isAuthErr = /HTTP 401|HTTP 403|token_expired/i.test(rawMsg);
+    const isAuthErr = /HTTP 401|HTTP 403|token_expired|AuthRequiredError|Session expired/i.test(rawMsg);
     if (btnLabel) btnLabel.textContent = isAuthErr ? 'Sign in again' : 'Backend error';
     button.classList.add('cp-btn-error');
     button.classList.remove('loading');

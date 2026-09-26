@@ -5,6 +5,51 @@
   const byId = id => document.getElementById(id);
   const extension = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
   let api = extension ? (window.PELICAN_BACKEND_URL || 'http://127.0.0.1:8000') : location.origin;
+  let pendingRefresh = null;
+
+  async function persistSession(session, email = '') {
+    if (extension) {
+      await chrome.storage.local.set({auth_token: session.access_token || '', refresh_token: session.refresh_token || '', user_email: email, backend_url: api});
+    } else {
+      sessionStorage.setItem('pelican_auth_token', session.access_token || '');
+      localStorage.setItem('pelican_auth_token', session.access_token || '');
+      localStorage.setItem('pelican_refresh_token', session.refresh_token || '');
+      if (email) localStorage.setItem('pelican_user_email', email);
+    }
+  }
+  async function clearSession() {
+    if (extension) await chrome.storage.local.set({auth_token:'', refresh_token:'', user_email:''});
+    else {
+      sessionStorage.removeItem('pelican_auth_token');
+      localStorage.removeItem('pelican_auth_token');
+      localStorage.removeItem('pelican_refresh_token');
+      localStorage.removeItem('pelican_user_email');
+    }
+  }
+  async function storedRefresh() {
+    return extension ? ((await chrome.storage.local.get('refresh_token')).refresh_token || '') : (localStorage.getItem('pelican_refresh_token') || '');
+  }
+  async function authenticatedFetch(path, options = {}) {
+    const stored = extension ? await chrome.storage.local.get('auth_token') : {};
+    let access = extension ? stored.auth_token : (sessionStorage.getItem('pelican_auth_token') || localStorage.getItem('pelican_auth_token'));
+    const send = () => fetch(`${api}${path}`, {...options, headers:{...options.headers, Authorization:`Bearer ${access}`}});
+    let response = await send();
+    if (response.status !== 401) return response;
+    if (!pendingRefresh) pendingRefresh = (async () => {
+      const refresh = await storedRefresh();
+      if (!refresh) throw new Error('Session expired. Sign in again.');
+      const res = await fetch(`${api}/api/v1/auth/refresh`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:refresh})});
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.access_token || !data.refresh_token) throw new Error('Session expired. Sign in again.');
+      const email = extension ? ((await chrome.storage.local.get('user_email')).user_email || '') : (localStorage.getItem('pelican_user_email') || '');
+      await persistSession(data, email);
+      return data.access_token;
+    })().finally(() => { pendingRefresh = null; });
+    try { access = await pendingRefresh; response = await send(); }
+    catch { await clearSession(); throw new Error('Session expired. Sign in again.'); }
+    if (response.status === 401) { await clearSession(); throw new Error('Session expired. Sign in again.'); }
+    return response;
+  }
 
   function progress() {
     for (let i = 1; i <= steps; i++) {
@@ -221,6 +266,7 @@
       const email = (byId('accountEmail')?.value || '').trim();
       const password = byId('accountPassword')?.value || '';
       const oldStorage = extension ? await chrome.storage.local.get(['auth_token', 'user_email']) : {};
+      let session = null;
       let token = extension
         ? oldStorage.auth_token
         : (sessionStorage.getItem('pelican_auth_token') || localStorage.getItem('pelican_auth_token'));
@@ -268,6 +314,8 @@
         }
         token = auth.access_token;
         if (!token) throw new Error('Sign-in did not return a session.');
+        session = auth;
+        await persistSession(auth, email);
       }
 
       // Parse memory input and profile data - allow unlimited context
@@ -291,18 +339,16 @@
 
       if (hasDetails) {
         if (button) button.textContent = 'Saving memories…';
-        const savedResponse = await fetch(`${api}/api/v1/memories/import`, {
+        const savedResponse = await authenticatedFetch('/api/v1/memories/import', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`},
+          headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(payload)
         });
         saved = await savedResponse.json().catch(() => ({}));
         if (!savedResponse.ok) throw new Error(saved.detail || 'Memories could not be saved.');
 
         if (saved.saved && saved.saved.length) {
-          const vaultRes = await fetch(`${api}/api/v1/memories`, {
-            headers: {Authorization: `Bearer ${token}`}
-          });
+          const vaultRes = await authenticatedFetch('/api/v1/memories');
           const vault = await vaultRes.json().catch(() => []);
           const vaultIds = new Set((Array.isArray(vault) ? vault : []).map(m => m.id));
           for (const item of saved.saved) {
@@ -314,17 +360,7 @@
       }
 
       // Persist auth token in both localStorage and sessionStorage
-      if (extension) {
-        await chrome.storage.local.set({
-          auth_token: token,
-          user_email: email || oldStorage.user_email || '',
-          backend_url: api
-        });
-      } else {
-        sessionStorage.setItem('pelican_auth_token', token);
-        localStorage.setItem('pelican_auth_token', token);
-        if (email) localStorage.setItem('pelican_user_email', email);
-      }
+      // Import may have rotated the session. Do not restore pre-refresh tokens.
 
       if (byId('accountPassword')) byId('accountPassword').value = '';
 
@@ -416,13 +452,7 @@
           const token = auth.access_token;
           if (!token) throw new Error('No session returned.');
 
-          if (extension) {
-            await chrome.storage.local.set({auth_token: token, user_email: email, backend_url: api});
-          } else {
-            sessionStorage.setItem('pelican_auth_token', token);
-            localStorage.setItem('pelican_auth_token', token);
-            localStorage.setItem('pelican_user_email', email);
-          }
+          await persistSession(auth, email);
 
           modal.close();
           window.location.href = './dashboard.html';
@@ -466,12 +496,8 @@
     }
 
     if (switchBtn) {
-      switchBtn.addEventListener('click', () => {
-        if (!extension) {
-          sessionStorage.removeItem('pelican_auth_token');
-          localStorage.removeItem('pelican_auth_token');
-          localStorage.removeItem('pelican_user_email');
-        }
+      switchBtn.addEventListener('click', async () => {
+        await clearSession();
         if (notice) notice.hidden = true;
         if (googleBox) googleBox.style.display = '';
         if (accountFields) accountFields.style.display = '';
@@ -500,6 +526,7 @@
     }
 
     let token = hashParams.get('access_token');
+    let oauthSession = token ? {access_token:token, refresh_token:hashParams.get('refresh_token')} : null;
     let email = '';
 
     if (token) {
@@ -519,6 +546,7 @@
           const data = await resp.json().catch(() => ({}));
           if (resp.ok && data.access_token) {
             token = data.access_token;
+            oauthSession = data;
             email = data.user?.email || '';
           }
         } catch {}
@@ -526,13 +554,7 @@
     }
 
     if (token) {
-      if (extension) {
-        await chrome.storage.local.set({auth_token: token, user_email: email, backend_url: api});
-      } else {
-        sessionStorage.setItem('pelican_auth_token', token);
-        localStorage.setItem('pelican_auth_token', token);
-        if (email) localStorage.setItem('pelican_user_email', email);
-      }
+      await persistSession(oauthSession, email);
       history.replaceState(null, '', window.location.pathname);
 
       // Check if there was pending onboarding data to import

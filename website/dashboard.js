@@ -5,6 +5,7 @@
   if (!extension) API = location.origin;
 
   let token = '';
+  let refreshPromise = null;
   let memories = [];
   let preferences = [];
   let recallResult = {general_memories: [], sensitive_memories: []};
@@ -16,23 +17,63 @@
       ? ((await chrome.storage.local.get('auth_token')).auth_token || '')
       : (sessionStorage.getItem('pelican_auth_token') || localStorage.getItem('pelican_auth_token') || '');
   }
-  async function saveToken(value) {
-    token = value || '';
+  async function storedRefresh() {
+    return extension
+      ? ((await chrome.storage.local.get('refresh_token')).refresh_token || '')
+      : (localStorage.getItem('pelican_refresh_token') || '');
+  }
+  async function saveSession(session) {
+    token = session.access_token || '';
     if (extension) {
-      await chrome.storage.local.set({auth_token: token, backend_url: API});
+      await chrome.storage.local.set({auth_token: token, refresh_token: session.refresh_token || '', backend_url: API});
     } else if (token) {
       sessionStorage.setItem('pelican_auth_token', token);
       localStorage.setItem('pelican_auth_token', token);
+      localStorage.setItem('pelican_refresh_token', session.refresh_token || '');
     } else {
       sessionStorage.removeItem('pelican_auth_token');
       localStorage.removeItem('pelican_auth_token');
+      localStorage.removeItem('pelican_refresh_token');
       localStorage.removeItem('pelican_user_email');
     }
   }
+  async function clearSession() {
+    await saveSession({});
+    if (extension) await chrome.storage.local.set({user_email: ''});
+    memories = []; preferences = []; recallResult = {general_memories: [], sensitive_memories: []};
+    byId('recentList')?.replaceChildren();
+    byId('allMemoryList')?.replaceChildren();
+    byId('preferenceList')?.replaceChildren();
+    text('accountEmail', '');
+  }
+  async function refreshSession() {
+    if (refreshPromise) return refreshPromise;
+    refreshPromise = (async () => {
+      const refresh = await storedRefresh();
+      if (!refresh) throw new Error('Sign in again.');
+      const response = await fetch(API + '/api/v1/auth/refresh', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({refresh_token:refresh})
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.access_token || !data.refresh_token) throw new Error('Sign in again.');
+      await saveSession(data);
+      return token;
+    })().finally(() => { refreshPromise = null; });
+    return refreshPromise;
+  }
   async function request(path, options = {}) {
-    const headers = Object.assign({'Content-Type': 'application/json'}, options.headers || {});
-    if (token) headers.Authorization = 'Bearer ' + token;
-    const response = await fetch(API + path, Object.assign({}, options, {headers}));
+    const send = () => {
+      const headers = Object.assign({'Content-Type': 'application/json'}, options.headers || {});
+      if (token) headers.Authorization = 'Bearer ' + token;
+      return fetch(API + path, Object.assign({}, options, {headers}));
+    };
+    let response = await send();
+    if (response.status === 401 && !path.startsWith('/api/v1/auth/')) {
+      try { await refreshSession(); response = await send(); }
+      catch { await clearSession(); const error = new Error('Session expired. Sign in again.'); error.status = 401; throw error; }
+      if (response.status === 401) await clearSession();
+    }
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       const detail = typeof body.detail === 'string' ? body.detail : 'Request failed (HTTP ' + response.status + ')';
@@ -47,10 +88,17 @@
     byId('dashboardViews').hidden = true;
     byId('authGate').hidden = false;
     text('authError', message);
+    byId('globalAccount').hidden = true;
   }
   function showDashboard() {
     byId('authGate').hidden = true;
     byId('dashboardViews').hidden = false;
+    byId('globalAccount').hidden = false;
+    if (extension) {
+      chrome.storage.local.get('user_email').then(data => text('accountEmail', data.user_email || 'Your account'));
+    } else {
+      text('accountEmail', localStorage.getItem('pelican_user_email') || 'Your account');
+    }
   }
   function setView(name) {
     byId('dashboardNav').querySelectorAll('[data-view]').forEach(button => {
@@ -205,7 +253,9 @@
   async function loadData() {
     try {
       await checkPendingOnboarding();
-      [memories, preferences] = await Promise.all([request('/api/v1/memories'), request('/api/v1/preferences')]);
+      const loaded = await Promise.all([request('/api/v1/memories'), request('/api/v1/preferences')]);
+      if (!token) return;
+      [memories, preferences] = loaded;
       renderMemories();
       renderPreferences();
       await renderCapture();
@@ -213,7 +263,7 @@
       const initial = location.hash.slice(1);
       setView(['overview','memories','use','preferences','settings'].includes(initial) ? initial : 'overview');
     } catch (error) {
-      if (error.status === 401) { await saveToken(''); showAuth('Your session expired. Please sign in again.'); }
+      if (error.status === 401) { await clearSession(); showAuth('Your session expired. Please sign in again.'); }
       else showAuth('Could not load your memories: ' + error.message);
     }
   }
@@ -258,6 +308,21 @@
       document.querySelectorAll('.brand, .sidebar-brand').forEach(link => { link.href = API + '/index.html'; });
     }
     text('backendAddress', API);
+    const sessionChanged = async nextToken => {
+      if (nextToken === token) return;
+      token = nextToken || '';
+      if (!token) { await clearSession(); showAuth('Signed out. Sign in to view your vault.'); }
+      else await loadData();
+    };
+    if (extension) {
+      chrome.storage.onChanged?.addListener((changes, area) => {
+        if (area === 'local' && changes.auth_token) void sessionChanged(changes.auth_token.newValue);
+      });
+    } else {
+      window.addEventListener('storage', event => {
+        if (event.key === 'pelican_auth_token') void sessionChanged(event.newValue);
+      });
+    }
     byId('dashboardNav').addEventListener('click', event => {
       const button = event.target.closest('[data-view]');
       if (button) setView(button.dataset.view);
@@ -303,7 +368,7 @@
           const payload = JSON.parse(atob(accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
           email = payload.email || '';
         } catch {}
-        await saveToken(accessToken);
+        await saveSession({access_token: accessToken, refresh_token: hashParams.get('refresh_token')});
         if (email) localStorage.setItem('pelican_user_email', email);
         history.replaceState(null, '', window.location.pathname);
         return;
@@ -317,7 +382,7 @@
             body: JSON.stringify({ code })
           });
           if (data.access_token) {
-            await saveToken(data.access_token);
+            await saveSession(data);
             if (data.user?.email) localStorage.setItem('pelican_user_email', data.user.email);
           }
         } catch (err) {
@@ -343,7 +408,7 @@
         }
         const emailVal = byId('email').value.trim();
         const data = await request('/api/v1/auth/token', {method:'POST', body:JSON.stringify({email:emailVal, password:byId('password').value})});
-        await saveToken(data.access_token);
+        await saveSession(data);
         localStorage.setItem('pelican_user_email', emailVal);
         byId('password').value = '';
         await loadData();
@@ -360,13 +425,21 @@
         const emailVal = byId('email').value.trim();
         const data = await request('/api/v1/auth/signup', {method:'POST', body:JSON.stringify({email:emailVal, password:byId('password').value})});
         if (!data.access_token) { text('authError', 'Check your email to confirm your account, then sign in.'); return; }
-        await saveToken(data.access_token);
+        await saveSession(data);
         localStorage.setItem('pelican_user_email', emailVal);
         byId('password').value = '';
         await loadData();
       } catch (error) { text('authError', error.message); }
     });
-    byId('signOutBtn').addEventListener('click', async () => { await saveToken(''); memories = []; preferences = []; showAuth('Signed out.'); });
+    async function signOut() {
+      const oldRefresh = await storedRefresh();
+      const oldAccess = token;
+      await clearSession();
+      showAuth('Logged out.');
+      if (oldRefresh) fetch(API + '/api/v1/auth/logout', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:oldRefresh,access_token:oldAccess})}).catch(() => {});
+    }
+    byId('signOutBtn').addEventListener('click', signOut);
+    byId('globalSignOutBtn').addEventListener('click', signOut);
     byId('recallForm').addEventListener('submit', async event => {
       event.preventDefault();
       text('recallStatus', 'Finding relevant memories…');

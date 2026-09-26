@@ -46,7 +46,7 @@ const SECRET_PATTERNS: Array<{ name: string; pattern: RegExp }> = [
 const SENSITIVE_PATTERNS: Array<{ name: string; pattern: RegExp }> = [
   {
     name: 'Allergy and Health Sensitivity',
-    pattern: /\b(allergy|allergies|allergic|peanut|peanuts|epipen|anaphylaxis|gluten allergy|dairy allergy|nut allergy|shellfish allergy)\b/i,
+    pattern: /\b(allergy|allergies|allergic|epipen|anaphylaxis|gluten allergy|dairy allergy|nut allergy|shellfish allergy)\b/i,
   },
   {
     name: 'Medical Condition',

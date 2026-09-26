@@ -92,9 +92,30 @@ def test_signup_handles_immediate_session_and_email_confirmation(monkeypatch):
         first = client.post("/api/v1/auth/signup", json={"email": "ada@example.com", "password": "safe-test-password"})
         second = client.post("/api/v1/auth/signup", json={"email": "bea@example.com", "password": "safe-test-password"})
     assert first.status_code == 200
-    assert first.json() == {"status": "ready", "access_token": "new-session"}
-    assert second.json() == {"status": "confirmation_required", "access_token": None}
+    assert first.json()["status"] == "ready"
+    assert first.json()["access_token"] == "new-session"
+    assert first.json()["token_type"] == "bearer"
+    assert second.json()["status"] == "confirmation_required"
+    assert second.json()["access_token"] is None
     assert all(url == "https://auth.example.test/auth/v1/signup" for url, _ in seen)
+
+
+def test_auth_routes_keep_refresh_tokens_and_reject_empty_refresh(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://auth.example.test")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-test-key")
+    def fake_post(url, **_kwargs):
+        if "refresh_token" in url:
+            return httpx.Response(200, json={"access_token":"rotated", "refresh_token":"rotated-refresh", "expires_in":1800})
+        return httpx.Response(200, json={"access_token":"signed-in", "refresh_token":"fresh-refresh", "expires_in":3600})
+    monkeypatch.setattr(httpx, "post", fake_post)
+    with TestClient(app) as client:
+        login = client.post("/api/v1/auth/token", json={"email":"a@example.com", "password":"password123"})
+        refresh = client.post("/api/v1/auth/refresh", json={"refresh_token":"fresh-refresh"})
+        oauth = client.post("/api/v1/auth/oauth-callback", json={"code":"synthetic-code"})
+    assert login.json()["refresh_token"] == "fresh-refresh"
+    assert refresh.json()["refresh_token"] == "rotated-refresh"
+    assert oauth.json()["refresh_token"] == "fresh-refresh"
+    assert all(result.json()["token_type"] == "bearer" for result in (login, refresh, oauth))
 
 
 def test_auth_errors_explain_unconfirmed_email_and_signup_rate_limit(monkeypatch):
@@ -146,4 +167,3 @@ def test_unlimited_context_import_accepts_large_memories():
         assert data["saved_count"] == 45
         assert data["duplicate_count"] == 0
         assert data["skipped_count"] == 0
-

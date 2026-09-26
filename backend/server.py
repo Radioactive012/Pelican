@@ -18,6 +18,7 @@ import io
 import json
 import logging
 import os
+import subprocess
 import time
 from contextlib import asynccontextmanager
 from importlib.metadata import version
@@ -50,6 +51,17 @@ from security import classify_text, contains_secret
 logger = logging.getLogger(__name__)
 
 BUILD_MARKER = os.getenv("BUILD_MARKER", "context-passport-v3-api-001")
+def release_commit() -> str:
+    if os.getenv("RENDER_GIT_COMMIT"):
+        return os.environ["RENDER_GIT_COMMIT"][:12]
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short=12", "HEAD"],
+            cwd=Path(__file__).resolve().parents[1], timeout=1, stderr=subprocess.DEVNULL,
+        ).decode().strip()
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
 MAX_REQUEST_BYTES = int(os.getenv("MAX_REQUEST_BYTES", "65536"))  # 64 KB limit
 RATE_LIMIT_WINDOW = float(os.getenv("RATE_LIMIT_WINDOW", "60.0"))    # 60-second window
 RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "60")) # 60 requests per minute
@@ -398,6 +410,7 @@ async def health() -> dict[str, str]:
         "service": "context-passport",
         "version": "3.0.0",
         "build": BUILD_MARKER,
+        "commit": release_commit(),
         "mem0": version("mem0ai"),
         "fastapi": version("fastapi"),
     }
@@ -562,20 +575,26 @@ async def login_for_token(req: AuthTokenRequest) -> dict[str, Any]:
             raise HTTPException(status_code=401, detail="Email or password is incorrect.")
         raise HTTPException(status_code=401, detail="Sign-in failed. Check your credentials and try again.")
 
-    res_data = response.json()
-    token = res_data.get("access_token")
-    if not token:
-        raise HTTPException(status_code=502, detail="Authentication did not return a session")
-    return {
-        "access_token": token,
-        "refresh_token": res_data.get("refresh_token"),
-        "token_type": "bearer",
-        "expires_in": res_data.get("expires_in", 3600),
-    }
+    return session_response(response.json())
 
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
+    access_token: Optional[str] = None
+
+
+def session_response(data: dict[str, Any]) -> dict[str, Any]:
+    """Return the same session shape for every successful auth route."""
+    token = data.get("access_token")
+    if not isinstance(token, str) or not token:
+        raise HTTPException(status_code=502, detail="Authentication did not return a session")
+    return {
+        "access_token": token,
+        "refresh_token": data.get("refresh_token"),
+        "expires_in": data.get("expires_in", 3600),
+        "token_type": "bearer",
+        "user": data.get("user"),
+    }
 
 
 @app.post("/api/v1/auth/refresh")
@@ -596,13 +615,24 @@ async def refresh_access_token(req: RefreshTokenRequest) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Authentication service unreachable") from exc
     if resp.status_code != 200:
         raise HTTPException(status_code=401, detail="Refresh token expired or invalid")
-    data = resp.json()
-    return {
-        "access_token": data.get("access_token"),
-        "refresh_token": data.get("refresh_token"),
-        "token_type": "bearer",
-        "expires_in": data.get("expires_in", 3600),
-    }
+    return session_response(resp.json())
+
+
+@app.post("/api/v1/auth/logout")
+async def logout_session(req: RefreshTokenRequest) -> dict[str, bool]:
+    """Best-effort Supabase revocation; callers clear local credentials regardless."""
+    supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    if supabase_url and anon_key and req.access_token:
+        try:
+            httpx.post(
+                f"{supabase_url}/auth/v1/logout",
+                headers={"apikey": anon_key, "Authorization": f"Bearer {req.access_token}"},
+                timeout=3,
+            )
+        except httpx.RequestError:
+            pass
+    return {"ok": True}
 
 
 @app.post("/api/v1/auth/signup")
@@ -614,6 +644,7 @@ async def signup(req: AuthTokenRequest) -> dict[str, Any]:
     if not supabase_url or not anon_key:
         raise HTTPException(status_code=503, detail="Authentication is not configured")
 
+    session: dict[str, Any] = {}
     token = None
     created = False
 
@@ -641,7 +672,8 @@ async def signup(req: AuthTokenRequest) -> dict[str, Any]:
                         timeout=10,
                     )
                     if login_resp.status_code == 200:
-                        token = login_resp.json().get("access_token")
+                        session = login_resp.json()
+                        token = session.get("access_token")
                 except Exception as exc:
                     logger.warning("Post-signup login failed: %s", exc)
             else:
@@ -658,8 +690,8 @@ async def signup(req: AuthTokenRequest) -> dict[str, Any]:
                             timeout=10,
                         )
                         if login_resp.status_code == 200:
-                            token = login_resp.json().get("access_token")
-                            return {"status": "ready", "access_token": token}
+                            session = login_resp.json()
+                            return {"status": "ready", **session_response(session)}
                     except Exception:
                         pass
                     raise HTTPException(status_code=400, detail="Account already exists. Sign in instead.")
@@ -722,11 +754,15 @@ async def signup(req: AuthTokenRequest) -> dict[str, Any]:
                         timeout=10,
                     )
                     if login_resp.status_code == 200:
-                        token = login_resp.json().get("access_token")
+                        session = login_resp.json()
+                        token = session.get("access_token")
             except Exception as exc:
                 logger.warning("Auto-confirm step failed for %s: %s", user_id, exc)
 
-    return {"status": "ready" if token else "confirmation_required", "access_token": token}
+    if token:
+        return {"status": "ready", **session_response(session)}
+    return {"status": "confirmation_required", "access_token": None, "refresh_token": None,
+            "expires_in": 0, "token_type": "bearer", "user": None}
 
 
 class OAuthExchangeRequest(BaseModel):
@@ -773,8 +809,8 @@ async def oauth_callback(req: OAuthExchangeRequest) -> dict[str, Any]:
         )
         if resp.status_code == 200:
             data = resp.json()
-            return {"access_token": data.get("access_token"), "token_type": "bearer", "user": data.get("user")}
-        logger.warning("OAuth exchange responded %d: %s", resp.status_code, resp.text)
+            return session_response(data)
+        logger.warning("OAuth exchange responded %d", resp.status_code)
     except Exception as exc:
         logger.warning("OAuth exchange failed: %s", exc)
     raise HTTPException(status_code=400, detail="Could not exchange authorization code for session")

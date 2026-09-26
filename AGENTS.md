@@ -57,7 +57,7 @@ Context Passport is a **self-improving, privacy-first browser memory** product.
 | Step 3 | Embeddings & Safe Migration | 1536-dim `text-embedding-3-small`, model tagging, vector migration tool, tenant scoping | Passed |
 | Step 4 | Ingest, Privacy & Preferences | Provider integration with safe retry state machine, secret screener, 3-obs/2-chat engine | Passed |
 | Step 5 | Three-Site Capture | ChatGPT, Claude, Gemini adapters; DOM fixtures; single-turn capture; no assistant/history | Passed |
-| Step 6 | Recall, Consent & Injection | Use Memory, up-to-3 general, sensitive consent modal, composer replacement, fallback UI | Passed |
+| Step 6 | Recall, Consent & Injection | Use Memory, up-to-3 general, compact sensitive consent card, composer replacement, fallback UI | Passed |
 
 | Step 7 | Vault Controls & Lifecycle | Card rendering, locked preference corrections, evidence removal, block/forget lifecycles | Passed |
 | Step 8 | Local Runtime & Reliability | `127.0.0.1:8000` loopback by default, token expiry, rate limits, restart survival | Passed |
@@ -66,6 +66,8 @@ Context Passport is a **self-improving, privacy-first browser memory** product.
 | Step 11 | Real Browser Journey | Live ChatGPT, Claude, Gemini web tests in Chrome/Brave; cross-site recall; privacy modals | LIVE PENDING |
 | Step 12 | Final Release & Judge Rehearsal | Fresh `v3/dist`, clean demo account, end-to-end judge demonstration rehearsal | LIVE PENDING |
 | Deployment | Render release | Free Blueprint and paired extension ZIP prepared; live Render account deployment and full authenticated browser journey remain pending | PREPARED |
+
+Emergency session repair (2026-09-26): expired access tokens must be refreshed once using a rotated Supabase refresh token and the original request retried. An expired JWT must never be accepted via an admin user lookup. Logout must clear both tokens, account identity, and visible vault data. The ChatGPT/Claude/Gemini live journey remains a separate gate.
 
 ---
 

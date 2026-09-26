@@ -5,7 +5,13 @@
  */
 
 import type { MemoryItem, PreferenceItem } from './injection.ts';
-import { DEFAULT_BACKEND_URL } from './storage.ts';
+import { DEFAULT_BACKEND_URL, getSetting, setSetting } from './storage.ts';
+
+export class AuthRequiredError extends Error {
+  constructor() { super('Session expired. Sign in again.'); this.name = 'AuthRequiredError'; }
+}
+
+const pendingRefreshes = new Map<string, Promise<string>>();
 
 export interface IngestResponse {
   status: 'processed' | 'skipped' | 'duplicate_skipped';
@@ -69,6 +75,57 @@ export class ContextPassportApiClient {
     return headers;
   }
 
+  private async request(path: string, init: RequestInit = {}): Promise<Response> {
+    const send = () => fetch(`${this.backendUrl}${path}`, {
+      ...init, headers: { ...init.headers, ...this.getHeaders() },
+    });
+    let response = await send();
+    if (response.status !== 401) return response;
+    const refresh = await getSetting('refresh_token');
+    if (!refresh) {
+      await this.clearSession();
+      throw new AuthRequiredError();
+    }
+    const key = `${this.backendUrl}:${refresh}`;
+    let pending = pendingRefreshes.get(key);
+    if (!pending) {
+      pending = this.refreshToken(refresh).finally(() => pendingRefreshes.delete(key));
+      pendingRefreshes.set(key, pending);
+    }
+    try {
+      this.token = await pending;
+      response = await send();
+    } catch {
+      if ((await getSetting('refresh_token')) === refresh) await this.clearSession();
+      throw new AuthRequiredError();
+    }
+    if (response.status === 401) {
+      await this.clearSession();
+      throw new AuthRequiredError();
+    }
+    return response;
+  }
+
+  async clearSession(): Promise<void> {
+    this.token = '';
+    await Promise.all([
+      setSetting('auth_token', ''), setSetting('refresh_token', ''), setSetting('user_email', ''),
+    ]);
+  }
+
+  async logout(): Promise<void> {
+    const refresh = await getSetting('refresh_token');
+    const access = this.token;
+    await this.clearSession();
+    if (refresh) {
+      void fetch(`${this.backendUrl}/api/v1/auth/logout`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(2500),
+        body: JSON.stringify({ refresh_token: refresh, access_token: access }),
+      }).catch(() => {});
+    }
+  }
+
   async checkHealth(): Promise<{ ok: boolean; status: string; version?: string }> {
     try {
       const res = await fetch(`${this.backendUrl}/health`);
@@ -101,12 +158,10 @@ export class ContextPassportApiClient {
       throw new Error(err.detail || 'Authentication failed');
     }
     const data = await res.json();
+    if (!data.access_token) throw new Error('Authentication did not return a session');
     this.token = data.access_token;
-    if (data.refresh_token && typeof chrome !== 'undefined' && chrome.storage?.local) {
-      try {
-        chrome.storage.local.set({ refresh_token: data.refresh_token });
-      } catch {}
-    }
+    await setSetting('auth_token', data.access_token);
+    await setSetting('refresh_token', data.refresh_token || '');
     return data.access_token;
   }
 
@@ -120,15 +175,10 @@ export class ContextPassportApiClient {
       throw new Error('Failed to refresh token');
     }
     const data = await res.json();
+    if (!data.access_token || !data.refresh_token) throw new Error('Invalid refresh response');
     this.token = data.access_token;
-    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-      try {
-        chrome.storage.local.set({
-          auth_token: data.access_token,
-          ...(data.refresh_token ? { refresh_token: data.refresh_token } : {})
-        });
-      } catch {}
-    }
+    await setSetting('auth_token', data.access_token);
+    await setSetting('refresh_token', data.refresh_token);
     return data.access_token;
   }
 
@@ -140,7 +190,7 @@ export class ContextPassportApiClient {
     event_id?: string;
     source_site?: 'chatgpt.com' | 'claude.ai' | 'gemini.google.com' | 'manual';
   }): Promise<IngestResponse> {
-    const res = await fetch(`${this.backendUrl}/api/v1/messages/ingest`, {
+    const res = await this.request('/api/v1/messages/ingest', {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify({
@@ -161,7 +211,7 @@ export class ContextPassportApiClient {
   }
 
   async queryMemories(query: string, maxGeneral = 3): Promise<QueryMemoriesResponse> {
-    const res = await fetch(`${this.backendUrl}/api/v1/memories/query`, {
+    const res = await this.request('/api/v1/memories/query', {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify({
@@ -178,7 +228,7 @@ export class ContextPassportApiClient {
   }
 
   async getAllMemories(): Promise<BackendMemoryDoc[]> {
-    const res = await fetch(`${this.backendUrl}/api/v1/memories`, {
+    const res = await this.request('/api/v1/memories', {
       method: 'GET',
       headers: this.getHeaders(),
     });
@@ -189,7 +239,7 @@ export class ContextPassportApiClient {
   }
 
   async blockMemory(memoryId: string): Promise<boolean> {
-    const res = await fetch(`${this.backendUrl}/api/v1/memories/${encodeURIComponent(memoryId)}/block`, {
+    const res = await this.request(`/api/v1/memories/${encodeURIComponent(memoryId)}/block`, {
       method: 'POST',
       headers: this.getHeaders(),
     });
@@ -197,7 +247,7 @@ export class ContextPassportApiClient {
   }
 
   async updateMemory(memoryId: string, text: string): Promise<BackendMemoryDoc> {
-    const res = await fetch(`${this.backendUrl}/api/v1/memories/${encodeURIComponent(memoryId)}`, {
+    const res = await this.request(`/api/v1/memories/${encodeURIComponent(memoryId)}`, {
       method: 'PUT', headers: this.getHeaders(), body: JSON.stringify({ text }),
     });
     if (!res.ok) {
@@ -208,7 +258,7 @@ export class ContextPassportApiClient {
   }
 
   async deleteMemory(memoryId: string): Promise<boolean> {
-    const res = await fetch(`${this.backendUrl}/api/v1/memories/${encodeURIComponent(memoryId)}`, {
+    const res = await this.request(`/api/v1/memories/${encodeURIComponent(memoryId)}`, {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
@@ -216,7 +266,7 @@ export class ContextPassportApiClient {
   }
 
   async getPreferences(): Promise<BackendPreferenceDoc[]> {
-    const res = await fetch(`${this.backendUrl}/api/v1/preferences`, {
+    const res = await this.request('/api/v1/preferences', {
       method: 'GET',
       headers: this.getHeaders(),
     });
@@ -227,7 +277,7 @@ export class ContextPassportApiClient {
   }
 
   async updatePreference(preferenceId: string, newText: string): Promise<any> {
-    const res = await fetch(`${this.backendUrl}/api/v1/preferences/${encodeURIComponent(preferenceId)}`, {
+    const res = await this.request(`/api/v1/preferences/${encodeURIComponent(preferenceId)}`, {
       method: 'PUT',
       headers: this.getHeaders(),
       body: JSON.stringify({ preference_text: newText }),
@@ -239,7 +289,7 @@ export class ContextPassportApiClient {
   }
 
   async removePreferenceEvidence(preferenceId: string, observationId: string): Promise<boolean> {
-    const res = await fetch(`${this.backendUrl}/api/v1/preferences/${encodeURIComponent(preferenceId)}/observations/${encodeURIComponent(observationId)}`, {
+    const res = await this.request(`/api/v1/preferences/${encodeURIComponent(preferenceId)}/observations/${encodeURIComponent(observationId)}`, {
       method: 'DELETE', headers: this.getHeaders(),
     });
     if (!res.ok) throw new Error(`Could not remove evidence: HTTP ${res.status}`);
@@ -247,7 +297,7 @@ export class ContextPassportApiClient {
   }
 
   async blockPreference(preferenceId: string): Promise<boolean> {
-    const res = await fetch(`${this.backendUrl}/api/v1/preferences/${encodeURIComponent(preferenceId)}/block`, {
+    const res = await this.request(`/api/v1/preferences/${encodeURIComponent(preferenceId)}/block`, {
       method: 'POST', headers: this.getHeaders(),
     });
     if (!res.ok) throw new Error(`Could not block preference: HTTP ${res.status}`);
@@ -255,7 +305,7 @@ export class ContextPassportApiClient {
   }
 
   async forgetPreference(preferenceId: string): Promise<boolean> {
-    const res = await fetch(`${this.backendUrl}/api/v1/preferences/${encodeURIComponent(preferenceId)}`, {
+    const res = await this.request(`/api/v1/preferences/${encodeURIComponent(preferenceId)}`, {
       method: 'DELETE', headers: this.getHeaders(),
     });
     if (!res.ok) throw new Error(`Could not forget preference: HTTP ${res.status}`);

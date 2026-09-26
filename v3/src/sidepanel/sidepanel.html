@@ -190,6 +190,13 @@
         <input type="url" id="setting-backend-url" class="cp-input" value="http://127.0.0.1:8000" spellcheck="false">
       </div>
 
+      <div id="cp-signed-in" class="cp-account-card" hidden>
+        <span>Signed in as</span>
+        <strong id="cp-account-email"></strong>
+        <button id="sign-out-btn" class="cp-btn cp-btn-secondary w-full" type="button">Log out</button>
+      </div>
+
+      <div id="cp-sign-in-form">
       <div class="cp-form-group">
         <label for="setting-email" class="cp-label">Email</label>
         <input type="email" id="setting-email" class="cp-input" autocomplete="username" placeholder="Your account email">
@@ -201,9 +208,10 @@
       </div>
 
       <button id="sign-in-btn" class="cp-btn cp-btn-primary w-full" type="button">Sign in</button>
-      <button id="sign-out-btn" class="cp-btn cp-btn-secondary w-full" type="button" style="margin-top: 8px;">Sign out</button>
+      </div>
       <p id="auth-message" class="cp-hint-text" role="status"></p>
 
+      <details class="cp-advanced-auth"><summary>Advanced session settings</summary>
       <div class="cp-form-group" style="margin-top: 16px;">
         <label for="setting-auth-token" class="cp-label">Supabase Auth Bearer Token</label>
         <input type="password" id="setting-auth-token" class="cp-input" placeholder="Advanced: test token or existing JWT">
@@ -212,6 +220,7 @@
       <button id="save-settings-btn" class="cp-btn cp-btn-primary w-full" type="button">
         Save Settings
       </button>
+      </details>
 
       <!-- Permissions & Privacy Guide -->
       <div class="cp-section-header" style="margin-top: 24px;">

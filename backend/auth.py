@@ -74,12 +74,11 @@ def verify_supabase_token(token: str) -> AuthenticatedUser:
             headers={"WWW-Authenticate": 'Bearer error="invalid_token", error_description="The access token expired"'},
         )
 
-    app_env = os.getenv("APP_ENV", "production").lower()
     jwt_expired = is_jwt_expired(clean_token)
 
-    # In test environment, enforce strict expiry rejection immediately
-    if jwt_expired and app_env == "test":
-        logger.info("JWT expired according to exp claim timestamp in test")
+    # An expired bearer token is never proof of an active session. The client
+    # must exchange its refresh token for a new access token instead.
+    if jwt_expired:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="token_expired",
@@ -88,44 +87,11 @@ def verify_supabase_token(token: str) -> AuthenticatedUser:
 
     supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
     supabase_anon_key = os.getenv("SUPABASE_ANON_KEY", "")
-    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
     if not supabase_url or not supabase_anon_key:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Supabase Auth is not configured on backend",
-        )
-
-    # In non-test mode, if JWT is expired, verify the active user via Supabase Admin API
-    if jwt_expired and service_key and app_env != "test":
-        try:
-            parts = clean_token.split(".")
-            if len(parts) == 3:
-                import base64
-                import json
-                padded = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
-                payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
-                uid = payload.get("sub") or payload.get("id")
-                uemail = payload.get("email")
-                if uid:
-                    admin_chk = httpx.get(
-                        f"{supabase_url}/auth/v1/admin/users/{uid}",
-                        headers={"apikey": service_key, "Authorization": f"Bearer {service_key}"},
-                        timeout=5.0,
-                    )
-                    if admin_chk.status_code == 200:
-                        admin_user = admin_chk.json()
-                        if admin_user.get("id") == uid:
-                            logger.info("Gracefully authenticated active Supabase user with expired token: %s", uid)
-                            return AuthenticatedUser(user_id=uid, email=uemail or admin_user.get("email"))
-        except Exception as ex:
-            logger.warning("Graceful expired token verification exception: %s", ex)
-
-        logger.info("JWT expired and user could not be verified via Admin API")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="token_expired",
-            headers={"WWW-Authenticate": 'Bearer error="invalid_token", error_description="The access token expired"'},
         )
 
     try:
@@ -155,33 +121,7 @@ def verify_supabase_token(token: str) -> AuthenticatedUser:
         msg = str(err_data.get("msg") or err_data.get("message") or err_data.get("error_description") or "").lower()
         code = str(err_data.get("code") or err_data.get("error_code") or "").lower()
 
-        if "expired" in msg or "expired" in code or jwt_expired:
-            # Graceful session recovery in non-test mode: check if this user is confirmed in Supabase Admin
-            if service_key and supabase_url and app_env != "test":
-                try:
-                    parts = clean_token.split(".")
-                    if len(parts) == 3:
-                        import base64
-                        import json
-                        padded = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
-                        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
-                        uid = payload.get("sub") or payload.get("id")
-                        uemail = payload.get("email")
-                        if uid:
-                            admin_chk = httpx.get(
-                                f"{supabase_url}/auth/v1/admin/users/{uid}",
-                                headers={"apikey": service_key, "Authorization": f"Bearer {service_key}"},
-                                timeout=5.0,
-                            )
-                            if admin_chk.status_code == 200:
-                                admin_user = admin_chk.json()
-                                if admin_user.get("id") == uid:
-                                    logger.info("Gracefully authenticated active Supabase user with expired token: %s", uid)
-                                    return AuthenticatedUser(user_id=uid, email=uemail or admin_user.get("email"))
-                except Exception as ex:
-                    logger.warning("Graceful expired token verification exception: %s", ex)
-
-            logger.info("Supabase confirmed token is expired")
+        if "expired" in msg or "expired" in code:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="token_expired",

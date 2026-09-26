@@ -246,6 +246,17 @@ def test_expired_and_invalid_jwt_handling(monkeypatch):
         assert resp_expired_jwt.json()["detail"] == "token_expired"
 
 
+def test_expired_token_never_uses_admin_identity_lookup(monkeypatch):
+    from auth import verify_supabase_token
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "synthetic-service-key")
+    monkeypatch.setattr(httpx, "get", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("network call")))
+    with pytest.raises(server.HTTPException) as error:
+        verify_supabase_token(make_mock_jwt("some-user", expired=True))
+    assert error.value.status_code == 401
+    assert error.value.detail == "token_expired"
+
+
 # ---------------------------------------------------------------------------
 # 5. Model Timeout Handling (504 Gateway Timeout + Safe Retry State Machine)
 # ---------------------------------------------------------------------------

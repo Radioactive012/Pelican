@@ -40,7 +40,34 @@
   fill: currentColor;
 }
 
-/* Privacy Firewall Approval Modal */
+/* Compact Privacy Firewall decision card; the page stays interactive. */
+.cp-sensitive-consent {
+  position: fixed;
+  right: 16px;
+  bottom: 20px;
+  width: min(360px, calc(100vw - 32px));
+  z-index: 999999;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #f8fafc;
+}
+.cp-consent-card {
+  background: #1d1d1d;
+  border: 1px solid #8064ff;
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 10px 35px rgba(0,0,0,.35);
+}
+.cp-sensitive-consent .cp-modal-header { justify-content: space-between; margin-bottom: 6px; }
+.cp-sensitive-consent .cp-modal-title { font-size: 14px; }
+.cp-sensitive-consent .cp-modal-desc { margin-bottom: 9px; font-size: 12px; }
+.cp-sensitive-consent .cp-sensitive-preview { max-height: 90px; padding: 8px; margin-bottom: 10px; }
+.cp-sensitive-consent .cp-sensitive-item { font-size: 12px; }
+.cp-sensitive-consent .cp-modal-actions { gap: 6px; }
+.cp-sensitive-consent .cp-modal-actions button { min-height: 38px; padding: 7px 10px; }
+.cp-sensitive-consent #cp-close-btn { background: none; border: 0; color: #f8fafc; font-size: 23px; cursor: pointer; }
+@media (max-width: 480px) { .cp-sensitive-consent { bottom: 8px; right: 8px; width: min(320px, calc(100vw - 16px)); } }
+
+/* Manual composer fallback remains a dialog. */
 .cp-modal-backdrop {
   position: fixed;
   top: 0;

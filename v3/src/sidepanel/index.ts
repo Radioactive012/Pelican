@@ -10,6 +10,17 @@ import { DEFAULT_BACKEND_URL, getAllSettings, getSetting, isSiteCaptureEnabled, 
 
 let apiClient: ContextPassportApiClient;
 
+async function syncAccountView() {
+  const token = await getSetting('auth_token');
+  const email = await getSetting('user_email');
+  const signedIn = document.getElementById('cp-signed-in');
+  const signIn = document.getElementById('cp-sign-in-form');
+  if (signedIn) signedIn.hidden = !token;
+  if (signIn) signIn.hidden = Boolean(token);
+  const label = document.getElementById('cp-account-email');
+  if (label) label.textContent = email || 'Your account';
+}
+
 async function ensureBackendPermission(rawUrl: string): Promise<void> {
   let url: URL;
   try { url = new URL(rawUrl); } catch { throw new Error('Enter a valid backend URL.'); }
@@ -33,6 +44,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   initVault();
   initPreferences();
   initFallback();
+  await syncAccountView();
+  chrome.storage?.onChanged?.addListener((changes, area) => {
+    if (area !== 'local' || !changes.auth_token) return;
+    apiClient.setToken(changes.auth_token.newValue || '');
+    void syncAccountView();
+    if (!changes.auth_token.newValue) {
+      void loadVaultMemories();
+      void loadPreferences();
+    }
+  });
   document.getElementById('open-dashboard-btn')?.addEventListener('click', () => {
     chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
   });
@@ -106,7 +127,7 @@ async function initConnectionStatus() {
     badge.textContent = 'Connected';
     badge.className = 'cp-badge cp-badge-success';
   } catch (err: any) {
-    badge.textContent = /HTTP 401|HTTP 403|token_expired/i.test(err?.message || '') ? 'Sign in again' : 'Backend error';
+    badge.textContent = /HTTP 401|HTTP 403|token_expired|Session expired/i.test(err?.message || '') ? 'Sign in again' : 'Backend error';
     badge.className = 'cp-badge cp-badge-error';
   }
 }
@@ -170,6 +191,7 @@ async function initSettings(settings: any) {
       await setSetting('backend_url', backendUrl);
       await setSetting('auth_token', token);
       await setSetting('user_email', email);
+      await syncAccountView();
       if (tokenInput) tokenInput.value = token;
       if (authMessage) {
         authMessage.textContent = 'Signed in successfully. Your password was not saved.';
@@ -190,9 +212,8 @@ async function initSettings(settings: any) {
   });
 
   signOutBtn?.addEventListener('click', async () => {
-    await setSetting('auth_token', '');
-    await setSetting('user_email', '');
-    apiClient.setToken('');
+    await apiClient.logout();
+    await syncAccountView();
     if (tokenInput) tokenInput.value = '';
     if (passwordInput) passwordInput.value = '';
     if (emailInput) emailInput.value = '';
@@ -224,6 +245,8 @@ async function initSettings(settings: any) {
 
       apiClient.setBackendUrl(newUrl);
       apiClient.setToken(newToken);
+      if (!newToken) await setSetting('refresh_token', '');
+      await syncAccountView();
 
       saveBtn.textContent = 'Saved!';
       setTimeout(() => (saveBtn.textContent = 'Save Settings'), 1500);
@@ -294,7 +317,7 @@ async function loadVaultMemories() {
     listEl.innerHTML = '';
     memories.forEach((mem) => listEl.appendChild(renderMemoryCard(mem)));
   } catch (err: any) {
-    const isAuthError = /HTTP 401|HTTP 403|token_expired/i.test(err?.message || '');
+    const isAuthError = /HTTP 401|HTTP 403|token_expired|Session expired/i.test(err?.message || '');
     const isOffline = /failed to fetch|offline|networkerror|econnrefused/i.test(err?.message || '');
     let title = 'Error loading memories';
     let desc = escapeHtml(err?.message || 'An unexpected error occurred.');
@@ -474,7 +497,7 @@ async function loadPreferences() {
     listEl.innerHTML = '';
     preferences.forEach((pref) => listEl.appendChild(renderPreferenceCard(pref)));
   } catch (err: any) {
-    const isAuthError = /HTTP 401|HTTP 403|token_expired/i.test(err?.message || '');
+    const isAuthError = /HTTP 401|HTTP 403|token_expired|Session expired/i.test(err?.message || '');
     const isOffline = /failed to fetch|offline|networkerror|econnrefused/i.test(err?.message || '');
     let title = 'Error loading preferences';
     let desc = escapeHtml(err?.message || 'An unexpected error occurred.');

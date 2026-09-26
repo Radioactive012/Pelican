@@ -73,6 +73,26 @@ function createMockButton(doc: Document): HTMLButtonElement {
 // =========================================================================
 
 test('Step 6 — Recall, Consent & Composer Insertion Suite', async (t) => {
+  await t.test('compact private-memory card never blocks the page or stacks', async () => {
+    const dom = loadFixture('chatgpt.html', 'https://chatgpt.com/c/consent');
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    const first = promptSensitiveApproval([{text:'My email is me@example.com',classification:'sensitive'}]);
+    const card = document.getElementById('cp-sensitive-consent')!;
+    assert.ok(card);
+    assert.equal(document.querySelector('.cp-modal-backdrop'), null);
+    assert.equal(document.activeElement, input);
+    assert.match(card.textContent || '', /Private memory available/);
+    assert.doesNotMatch(card.textContent || '', /me@example.com/);
+    const second = promptSensitiveApproval([{text:'Severe peanut allergy',classification:'sensitive'}]);
+    assert.equal(await first, false);
+    assert.equal(document.querySelectorAll('#cp-sensitive-consent').length, 1);
+    (document.querySelector('#cp-allow-btn') as HTMLButtonElement).click();
+    assert.equal(await second, true);
+    assert.equal(document.querySelector('#cp-sensitive-consent'), null);
+    dom.window.close();
+  });
   await t.test('1. Up-to-three general selection selects at most 3 top general memories', () => {
     const rawBackendResults = {
       general_memories: [
