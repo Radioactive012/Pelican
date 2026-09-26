@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initPreferences();
   initFallback();
   await syncAccountView();
+  if (!settings.auth_token) switchToTab('settings');
   chrome.storage?.onChanged?.addListener((changes, area) => {
     if (area !== 'local' || !changes.auth_token) return;
     apiClient.setToken(changes.auth_token.newValue || '');

@@ -71,6 +71,8 @@ Emergency session repair (2026-09-26): expired access tokens must be refreshed o
 
 Legacy unpacked installs can have an expired access token without a refresh token. In that case, the in-page Sign in again control must open Pelican's sign-in UI directly; the user's chat draft must remain untouched. A one-time sign-in is still necessary because the extension cannot safely recover a missing refresh credential.
 
+Side-panel packaging regression (2026-09-26): `sidepanel.html` must reference the packaged `sidepanel.css`, not source `styles.css`; otherwise the logo fills the panel and hides sign-in. Signed-out panels open Settings by default. Verify packaged HTML assets resolve before release.
+
 ---
 
 ## 4. Current & Provisional Compatibility Set

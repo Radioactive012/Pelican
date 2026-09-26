@@ -85,6 +85,16 @@ describe('Step 9 — UX, Packaging & Written Setup Suite', () => {
     assert(!bgContent.includes('Context Passport V2 installed'), 'background.js must not contain V2 installed message');
   });
 
+  it('2a. Side-panel stylesheet resolves inside the packaged extension', async () => {
+    const html = await readFile(path.join(distDir, 'sidepanel.html'), 'utf8');
+    const dom = new JSDOM(html);
+    for (const link of dom.window.document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')) {
+      assert(existsSync(path.join(distDir, link.getAttribute('href') || '')), `Missing side-panel stylesheet: ${link.getAttribute('href')}`);
+    }
+    assert.match(html, /href="sidepanel\.css"/);
+    dom.window.close();
+  });
+
   it('3. Side-panel loading, empty, and error states rendering with proper roles and accessible text', async () => {
     const html = await readFile(path.join(distDir, 'sidepanel.html'), 'utf8');
     const dom = new JSDOM(html, { url: 'https://extension.test/sidepanel.html' });
@@ -137,6 +147,8 @@ describe('Step 9 — UX, Packaging & Written Setup Suite', () => {
     await import(`../dist/sidepanel.js?update=${Date.now()}`);
     document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
     await tick(50);
+
+    assert.equal(document.getElementById('tab-btn-settings')?.getAttribute('aria-selected'), 'true', 'Signed-out users should see sign-in settings first');
 
     // Initial state without auth_token -> Displays unauthenticated empty state
     const vaultList = document.querySelector('#vault-list')!;
