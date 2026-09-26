@@ -22,14 +22,30 @@ def check() -> dict[str, dict[str, object]]:
     except Exception as exc:
         result["mongodb_atlas"] = {"ok": False, "error": type(exc).__name__}
 
-    try:
-        response = genai.Client(api_key=settings.gemini_api_key).models.embed_content(
-            model=settings.gemini_embedding_model,
-            contents="Context Passport connectivity check",
-        )
-        result["gemini"] = {"ok": bool(response.embeddings)}
-    except Exception as exc:
-        result["gemini"] = {"ok": False, "error": type(exc).__name__}
+    active_provider = getattr(settings, "embedding_provider", getattr(settings, "llm_provider", "openrouter")).lower()
+
+    if active_provider == "openrouter":
+        try:
+            from providers import OpenRouterEmbedder
+            embedder = OpenRouterEmbedder(
+                api_key=settings.openrouter_api_key,
+                base_url=settings.openrouter_base_url,
+                model=settings.embedding_model,
+                dimensions=settings.embedding_dims,
+            )
+            emb = embedder.embed("Context Passport connectivity check")
+            result["openrouter"] = {"ok": bool(emb and len(emb) == settings.embedding_dims), "dims": len(emb)}
+        except Exception as exc:
+            result["openrouter"] = {"ok": False, "error": type(exc).__name__, "detail": str(exc)[:100]}
+    else:
+        try:
+            response = genai.Client(api_key=settings.gemini_api_key).models.embed_content(
+                model=settings.gemini_embedding_model,
+                contents="Context Passport connectivity check",
+            )
+            result["gemini"] = {"ok": bool(response.embeddings)}
+        except Exception as exc:
+            result["gemini"] = {"ok": False, "error": type(exc).__name__}
 
     supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
     supabase_key = os.getenv("SUPABASE_ANON_KEY", "")

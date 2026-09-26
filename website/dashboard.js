@@ -147,12 +147,38 @@
       list.appendChild(card);
     });
   }
+  async function checkPendingOnboarding() {
+    try {
+      const raw = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pelican_pending_onboarding') : null;
+      if (!raw || !token) return;
+      sessionStorage.removeItem('pelican_pending_onboarding');
+      if (typeof localStorage !== 'undefined') localStorage.removeItem('pelican_pending_onboarding');
+      const pending = JSON.parse(raw);
+      const importPayload = {
+        name: pending.name || null,
+        age: pending.age || null,
+        role: pending.role || null,
+        tools: pending.tools || [],
+        memories: pending.memories || []
+      };
+      const hasDetails = Boolean(importPayload.name || importPayload.age !== null || importPayload.role || (importPayload.tools && importPayload.tools.length) || (importPayload.memories && importPayload.memories.length));
+      if (hasDetails) {
+        await request('/api/v1/memories/import', {
+          method: 'POST',
+          body: JSON.stringify(importPayload)
+        });
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
+
   async function renderCapture() {
     const wrap = byId('siteToggles');
     wrap.replaceChildren();
     if (!extension) {
-      text('captureStatus', 'EXT');
-      text('captureHelp', 'Open the Pelican extension to choose where capture is enabled.');
+      text('captureStatus', 'EXTENSION');
+      text('captureHelp', 'Capture is managed through the Pelican browser extension.');
       return;
     }
     const settings = await chrome.storage.local.get(['capture_chatgpt','capture_claude','capture_gemini']);
@@ -178,6 +204,7 @@
   }
   async function loadData() {
     try {
+      await checkPendingOnboarding();
       [memories, preferences] = await Promise.all([request('/api/v1/memories'), request('/api/v1/preferences')]);
       renderMemories();
       renderPreferences();

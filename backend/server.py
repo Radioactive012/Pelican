@@ -345,7 +345,7 @@ class MemoryImportRequest(BaseModel):
     age: Optional[int] = Field(default=None, ge=13, le=120)
     role: Optional[str] = Field(default=None, max_length=100)
     tools: List[Literal["chatgpt", "claude", "gemini"]] = Field(default_factory=list, max_length=3)
-    memories: List[str] = Field(default_factory=list, max_length=30)
+    memories: List[str] = Field(default_factory=list)
 
 
 # Endpoints
@@ -769,9 +769,10 @@ async def import_memories(
     duplicate_count = 0
     skipped_count = 0
     for text, sensitive in proposed:
-        if len(text) > 500:
-            raise HTTPException(status_code=400, detail="Each imported memory must be at most 500 characters")
-        result = mem_mgr.add_explicit_fact(text, user.user_id, sensitive=sensitive)
+        clean = " ".join(text.split()).strip()
+        if not clean:
+            continue
+        result = mem_mgr.add_explicit_fact(clean, user.user_id, sensitive=sensitive)
         if result["status"] == "saved":
             saved.append(result)
         elif result["status"] == "duplicate":

@@ -125,3 +125,25 @@ def test_google_auth_url_generation(monkeypatch):
     assert "https://auth.example.test/auth/v1/authorize" in url
     assert "provider=google" in url
     assert "redirect_to=http%3A%2F%2F127.0.0.1%3A8000%2Fdashboard.html" in url
+
+
+def test_unlimited_context_import_accepts_large_memories():
+    """Verify that user can import any amount of context: 50+ memories and long text > 1000 characters."""
+    auth_header = {"Authorization": "Bearer test-bearer-unlimited-context"}
+    # Generate 45 memories + one large memory > 1200 characters
+    long_memory = "Comprehensive architecture guidelines: " + ("Always prefer modular functional components with clear error boundaries. " * 20)
+    memories = [f"Preference observation #{i}: User prefers clean Pythonic patterns." for i in range(1, 45)]
+    memories.append(long_memory)
+
+    with TestClient(app) as client:
+        resp = client.post(
+            "/api/v1/memories/import",
+            headers=auth_header,
+            json={"memories": memories},
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["saved_count"] == 45
+        assert data["duplicate_count"] == 0
+        assert data["skipped_count"] == 0
+

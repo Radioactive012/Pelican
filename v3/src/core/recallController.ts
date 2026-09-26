@@ -20,7 +20,7 @@ export interface UseMemoryOptions {
 export interface UseMemoryResult {
   success: boolean;
   preparedPrompt?: string;
-  reason?: 'secret_detected' | 'no_memories' | 'draft_changed' | 'backend_error' | 'attached';
+  reason?: 'secret_detected' | 'no_memories' | 'draft_changed' | 'backend_error' | 'auth_required' | 'attached';
   fallbackTriggered?: boolean;
   approvedSensitiveCount?: number;
   generalCount?: number;
@@ -338,21 +338,26 @@ export async function handleUseMemoryAction(options: UseMemoryOptions): Promise<
       reason: 'attached',
     };
   } catch (err: any) {
-    if (btnLabel) btnLabel.textContent = 'Backend error';
+    const rawMsg = err?.message || 'Backend error';
+    const isAuthErr = /HTTP 401|HTTP 403|token_expired/i.test(rawMsg);
+    if (btnLabel) btnLabel.textContent = isAuthErr ? 'Sign in again' : 'Backend error';
     button.classList.add('cp-btn-error');
     button.classList.remove('loading');
     button.disabled = false;
     if (options.onError) {
       options.onError(err);
     } else {
-      showErrorToast(`Context Passport: Failed to retrieve memories. ${err?.message || 'Backend error'}`);
+      const userMsg = isAuthErr
+        ? 'Your session expired. Please open the Context Passport side panel and sign in again.'
+        : `Failed to retrieve memories. ${rawMsg}`;
+      showErrorToast(`Context Passport: ${userMsg}`);
     }
     setTimeout(() => {
-      if (btnLabel && btnLabel.textContent === 'Backend error') {
+      if (btnLabel && (btnLabel.textContent === 'Backend error' || btnLabel.textContent === 'Sign in again')) {
         btnLabel.textContent = 'Use Memory';
         button.classList.remove('cp-btn-error');
       }
-    }, 2500);
-    return { success: false, reason: 'backend_error' };
+    }, 3000);
+    return { success: false, reason: isAuthErr ? 'auth_required' : 'backend_error' };
   }
 }
