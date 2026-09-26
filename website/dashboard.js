@@ -261,7 +261,11 @@
       const errorDesc = hashParams.get('error_description') || queryParams.get('error_description') || hashParams.get('error') || queryParams.get('error');
       if (errorDesc) {
         history.replaceState(null, '', window.location.pathname);
-        showAuth(decodeURIComponent(errorDesc.replace(/\+/g, ' ')));
+        let msg = decodeURIComponent(errorDesc.replace(/\+/g, ' '));
+        if (msg.toLowerCase().includes('bad_oauth_state') || msg.toLowerCase().includes('state not found')) {
+          msg = 'Google OAuth state verification failed. In Brave or browsers with ad blockers, disable Shields/blockers for localhost & supabase and try again.';
+        }
+        showAuth(msg);
         return;
       }
 

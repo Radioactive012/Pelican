@@ -694,6 +694,7 @@ async def signup(req: AuthTokenRequest) -> dict[str, Any]:
 
 class OAuthExchangeRequest(BaseModel):
     code: str
+    code_verifier: Optional[str] = None
     redirect_to: Optional[str] = None
 
 
@@ -704,9 +705,11 @@ async def get_google_auth_url(request: Request, redirect_to: Optional[str] = Non
     anon_key = os.getenv("SUPABASE_ANON_KEY", "")
     if not supabase_url or not anon_key:
         raise HTTPException(status_code=503, detail="Authentication is not configured")
-    from urllib.parse import urlencode
+    from urllib.parse import urlencode, urlsplit, urlunsplit
     target_redirect = redirect_to or "http://127.0.0.1:8000/dashboard.html"
-    query = urlencode({"provider": "google", "redirect_to": target_redirect})
+    parsed = urlsplit(target_redirect)
+    clean_redirect = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, parsed.query, ""))
+    query = urlencode({"provider": "google", "redirect_to": clean_redirect})
     auth_url = f"{supabase_url}/auth/v1/authorize?{query}"
     accept = request.headers.get("accept", "")
     if "text/html" in accept and "application/json" not in accept:
@@ -721,16 +724,20 @@ async def oauth_callback(req: OAuthExchangeRequest) -> dict[str, Any]:
     anon_key = os.getenv("SUPABASE_ANON_KEY", "")
     if not supabase_url or not anon_key:
         raise HTTPException(status_code=503, detail="Authentication is not configured")
+    payload: dict[str, Any] = {"auth_code": req.code}
+    if req.code_verifier:
+        payload["code_verifier"] = req.code_verifier
     try:
         resp = httpx.post(
             f"{supabase_url}/auth/v1/token?grant_type=pkce",
             headers={"apikey": anon_key, "Content-Type": "application/json"},
-            json={"auth_code": req.code},
+            json=payload,
             timeout=10,
         )
         if resp.status_code == 200:
             data = resp.json()
             return {"access_token": data.get("access_token"), "token_type": "bearer", "user": data.get("user")}
+        logger.warning("OAuth exchange responded %d: %s", resp.status_code, resp.text)
     except Exception as exc:
         logger.warning("OAuth exchange failed: %s", exc)
     raise HTTPException(status_code=400, detail="Could not exchange authorization code for session")
@@ -1034,6 +1041,36 @@ async def delete_memory(
 app.mount("/", StaticFiles(directory=Path(__file__).resolve().parent.parent / "website", html=True), name="local_frontend")
 
 
+def _start_port_3000_oauth_forwarder(target_port: int = 8000) -> None:
+    """If port 3000 is unassigned locally, catch OAuth redirects sent to default Supabase Site URL (localhost:3000) and forward to target port."""
+    import threading
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+    class OAuthForwarderHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            target_path = "/onboarding.html" if ("onboarding" in self.path or "code=" in self.path or "error" in self.path) else "/dashboard.html"
+            query_part = f"?{self.path.split('?', 1)[1]}" if "?" in self.path else ""
+            redirect_target = f"http://127.0.0.1:{target_port}{target_path}{query_part}"
+            self.send_response(307)
+            self.send_header("Location", redirect_target)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, format, *args):
+            pass
+
+    def run_forwarder():
+        try:
+            server = HTTPServer(("127.0.0.1", 3000), OAuthForwarderHandler)
+            logger.info("Port 3000 OAuth helper active: forwarding to 127.0.0.1:%d", target_port)
+            server.serve_forever()
+        except OSError:
+            pass
+
+    t = threading.Thread(target=run_forwarder, daemon=True)
+    t.start()
+
+
 if __name__ == "__main__":
     import uvicorn
 
@@ -1042,5 +1079,7 @@ if __name__ == "__main__":
         logger.warning("Public interface binding rejected for security; binding to 127.0.0.1")
         host = "127.0.0.1"
     port = int(os.getenv("PORT", "8000"))
+    if host == "127.0.0.1" and port != 3000:
+        _start_port_3000_oauth_forwarder(target_port=port)
     logger.info("Starting Context Passport API on %s:%d", host, port)
     uvicorn.run(app, host=host, port=port)
